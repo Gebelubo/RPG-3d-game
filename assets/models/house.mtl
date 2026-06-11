@@ -1,0 +1,11 @@
+newmtl wall_material
+Ka 0.2 0.2 0.2
+Kd 0.7 0.6 0.45
+Ks 0.1 0.1 0.1
+Ns 8.0
+
+newmtl roof_material
+Ka 0.15 0.1 0.1
+Kd 0.65 0.25 0.2
+Ks 0.05 0.05 0.05
+Ns 4.0
