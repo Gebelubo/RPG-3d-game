@@ -1,75 +1,87 @@
 """
-camera.py  –  Free-look first-person camera.
-Uses math3d for matrix construction.
+camera.py  –  Third-person camera (orbit around player).
 """
-
 import math
 import numpy as np
-from .math3d import (
-    look_at, perspective, vec3, normalize,
-    rotate_y, rotate_x, translate, identity,
-)
+from .math3d import look_at, perspective, normalize
 
 
 class Camera:
-    def __init__(self,
-                 pos=(0.0, 1.7, 5.0),
-                 yaw=-90.0,
-                 pitch=0.0,
-                 fov=60.0,
-                 near=0.1,
-                 far=500.0):
-
-        self.pos   = np.array(pos,  dtype=np.float32)
-        self.yaw   = yaw      # degrees, -90 = looking down -Z
-        self.pitch = pitch    # degrees, 0 = horizontal
-
+    def __init__(self, fov=60.0, near=0.1, far=500.0):
+        self.yaw   = 0.0    # horizontal orbit angle (degrees)
+        self.pitch = 20.0   # vertical angle (degrees)
         self.fov   = fov
         self.near  = near
         self.far   = far
-
-        self.move_speed  = 5.0   # units/sec
-        self.mouse_sens  = 0.15  # degrees per pixel
-
+        self.arm_length = 3.2
+        self.mouse_sens = 0.18
+        self.pos         = np.array([0.0, 3.0, 5.5], dtype=np.float32)
+        self.target_pos  = np.array([0.0, 1.0, 0.0], dtype=np.float32)
+        self.front       = np.array([0.0, 0.0, -1.0], dtype=np.float32)
+        self.right       = np.array([1.0, 0.0,  0.0], dtype=np.float32)
+        self.up          = np.array([0.0, 1.0,  0.0], dtype=np.float32)
         self._update_vectors()
-
-    # ── Direction vectors ─────────────────────────────────────────────────────
 
     def _update_vectors(self):
         yaw_r   = math.radians(self.yaw)
         pitch_r = math.radians(self.pitch)
         self.front = normalize(np.array([
-            math.cos(pitch_r) * math.cos(yaw_r),
-            math.sin(pitch_r),
             math.cos(pitch_r) * math.sin(yaw_r),
+            math.sin(pitch_r),
+            math.cos(pitch_r) * math.cos(yaw_r),
         ], dtype=np.float32))
-        world_up = np.array([0, 1, 0], dtype=np.float32)
+        world_up   = np.array([0, 1, 0], dtype=np.float32)
         self.right = normalize(np.cross(self.front, world_up))
         self.up    = normalize(np.cross(self.right, self.front))
 
-    # ── Input ─────────────────────────────────────────────────────────────────
+    def update_third_person(self, player_pos, blockers: list = None):
+        """
+        Update camera position around `player_pos`.
+        If `blockers` is provided, it should be an iterable of dicts with keys `pos` (3-array)
+        and `radius` (float). The camera will attempt to pull inwards to avoid intersecting blockers.
+        """
+        target = np.array(player_pos, dtype=np.float32)
+        target[1] += 1.0  # aim at chest
+        self.target_pos = target
 
-    def process_keyboard(self, keys, dt: float):
-        """keys: set of currently held key names (strings)."""
-        speed = self.move_speed * dt
-        flat_front = normalize(np.array([self.front[0], 0, self.front[2]], dtype=np.float32))
-        if "w" in keys:  self.pos += flat_front * speed
-        if "s" in keys:  self.pos -= flat_front * speed
-        if "a" in keys:  self.pos -= self.right * speed
-        if "d" in keys:  self.pos += self.right * speed
-        if "space"  in keys: self.pos[1] += speed
-        if "lshift" in keys: self.pos[1] -= speed
+        # desired distance from target
+        max_d = self.arm_length
+
+        # compute desired forward vector (front already updated by process_mouse)
+        desired_pos = target - self.front * max_d
+        desired_pos[1] = target[1] + math.sin(math.radians(self.pitch)) * max_d + 0.5
+
+        # if blockers provided, sample shorter distances to avoid intersections
+        if blockers:
+            safe_d = max_d
+            # test a few candidate distances from near to max_d
+            for d in np.linspace(0.6, max_d, num=12):
+                cand = target - self.front * d
+                cand[1] = target[1] + math.sin(math.radians(self.pitch)) * d + 0.5
+                collision = False
+                for b in blockers:
+                    bp = np.array(b["pos"], dtype=np.float32)
+                    br = float(b.get("radius", 0.6))
+                    if np.linalg.norm(cand - bp) < br + 0.45:
+                        collision = True; break
+                if not collision:
+                    safe_d = d
+            desired_pos = target - self.front * safe_d
+            desired_pos[1] = target[1] + math.sin(math.radians(self.pitch)) * safe_d + 0.5
+
+        self.pos = desired_pos
 
     def process_mouse(self, dx: float, dy: float):
-        self.yaw   += dx * self.mouse_sens
+        self.yaw   -= dx * self.mouse_sens
         self.pitch -= dy * self.mouse_sens
-        self.pitch  = max(-89.0, min(89.0, self.pitch))
+        self.pitch  = max(-10.0, min(50.0, self.pitch))
         self._update_vectors()
 
-    # ── Matrices ──────────────────────────────────────────────────────────────
+    def process_keyboard(self, keys, dt):
+        pass  # player moves, not camera
 
     def view_matrix(self) -> np.ndarray:
-        return look_at(self.pos, self.pos + self.front, self.up)
+        return look_at(self.pos, self.target_pos, self.up)
 
     def projection_matrix(self, aspect: float) -> np.ndarray:
         return perspective(self.fov, aspect, self.near, self.far)
@@ -77,3 +89,16 @@ class Camera:
     @property
     def position(self) -> np.ndarray:
         return self.pos
+
+    # forward direction projected flat (for player movement)
+    @property
+    def flat_forward(self) -> np.ndarray:
+        f = np.array([self.front[0], 0.0, self.front[2]], dtype=np.float32)
+        n = np.linalg.norm(f)
+        return f / n if n > 0.001 else np.array([0, 0, -1], dtype=np.float32)
+
+    @property
+    def flat_right(self) -> np.ndarray:
+        r = np.array([self.right[0], 0.0, self.right[2]], dtype=np.float32)
+        n = np.linalg.norm(r)
+        return r / n if n > 0.001 else np.array([1, 0, 0], dtype=np.float32)

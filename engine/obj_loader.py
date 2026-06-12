@@ -180,7 +180,6 @@ class OBJLoader:
         # ── Compute flat normals if none supplied ─────────────────────────────
         if not norms:
             self._compute_normals(vertices, indices)
-
         return MeshData(name=group["name"], vertices=vertices, indices=indices)
 
     def _compute_normals(self, vertices: np.ndarray, indices: np.ndarray):
@@ -239,5 +238,24 @@ class OBJLoader:
                     tex_file = " ".join(parts[1:])
                     tex_path = os.path.join(base_dir, tex_file)
                     cur["map_Kd"] = tex_path if os.path.isfile(tex_path) else None
+
+        # Provide a sensible fallback: if the material did not specify a texture,
+        # attempt to find a common diffuse file in the same folder using naming
+        # conventions (e.g. <objbasename>_diffuse.png, diffuse.png, <mtlname>.png)
+        base_name = os.path.splitext(os.path.basename(path))[0]
+        candidates = [f"{base_name}_diffuse.png", f"{base_name}.png", "diffuse.png"]
+        files_in_dir = {os.path.basename(p): p for p in [os.path.join(base_dir, f) for f in os.listdir(base_dir)]}
+
+        for name, mat in materials.items():
+            if mat.get("map_Kd"):
+                continue
+            # try material-named texture first
+            mtex = f"{name}.png"
+            if mtex in files_in_dir:
+                mat["map_Kd"] = files_in_dir[mtex]; continue
+            # try candidates
+            for c in candidates:
+                if c in files_in_dir:
+                    mat["map_Kd"] = files_in_dir[c]; break
 
         return materials

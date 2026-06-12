@@ -23,20 +23,42 @@ class Texture:
         self._load(path)
 
     def _load(self, path: str):
-        img  = Image.open(path).transpose(Image.FLIP_TOP_BOTTOM)
-        fmt  = GL_RGBA if img.mode == "RGBA" else GL_RGB
-        data = img.convert("RGBA" if fmt == GL_RGBA else "RGB").tobytes()
+        try:
+            img  = Image.open(path).transpose(Image.FLIP_TOP_BOTTOM)
+            fmt  = GL_RGBA if img.mode == "RGBA" else GL_RGB
+            data = img.convert("RGBA" if fmt == GL_RGBA else "RGB").tobytes()
 
-        self.id = glGenTextures(1)
-        glBindTexture(GL_TEXTURE_2D, self.id)
-        glTexImage2D(GL_TEXTURE_2D, 0, fmt, img.width, img.height,
-                     0, fmt, GL_UNSIGNED_BYTE, data)
-        glGenerateMipmap(GL_TEXTURE_2D)
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR)
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR)
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT)
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT)
-        glBindTexture(GL_TEXTURE_2D, 0)
+            self.id = glGenTextures(1)
+            glBindTexture(GL_TEXTURE_2D, self.id)
+            glTexImage2D(GL_TEXTURE_2D, 0, fmt, img.width, img.height,
+                         0, fmt, GL_UNSIGNED_BYTE, data)
+            glGenerateMipmap(GL_TEXTURE_2D)
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR)
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR)
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT)
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT)
+            glBindTexture(GL_TEXTURE_2D, 0)
+        except Exception as exc:
+            # Fail gracefully: create a small procedural 4x4 checker texture
+            print(f"Texture load failed for {path}: {exc}")
+            size = 4
+            data = []
+            ca = (200, 200, 200); cb = (80, 80, 100)
+            for y in range(size):
+                for x in range(size):
+                    c = ca if (x + y) % 2 == 0 else cb
+                    data.extend([c[0], c[1], c[2]])
+            arr = np.array(data, dtype=np.uint8)
+            self.id = glGenTextures(1)
+            glBindTexture(GL_TEXTURE_2D, self.id)
+            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, size, size,
+                         0, GL_RGB, GL_UNSIGNED_BYTE, arr)
+            glGenerateMipmap(GL_TEXTURE_2D)
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR)
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR)
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT)
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT)
+            glBindTexture(GL_TEXTURE_2D, 0)
 
     def bind(self, unit: int = 0):
         glActiveTexture(GL_TEXTURE0 + unit)

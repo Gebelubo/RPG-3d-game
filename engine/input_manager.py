@@ -79,6 +79,10 @@ class InputManager:
     def mouse_pos(self) -> tuple[int, int]:
         return self._mouse_pos
 
+    @mouse_pos.setter
+    def mouse_pos(self, value: tuple[int, int]):
+        self._mouse_pos = value
+
     @property
     def scroll(self) -> int:
         return self._scroll
