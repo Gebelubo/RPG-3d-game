@@ -18,6 +18,10 @@ class InputManager:
         self._scroll = 0
         self._quit  = False
         self.mouse_captured = False
+        
+        # Flags para cliques estruturados em menus e HUD
+        self.mouse_clicked = False
+        self.resize_event = None
 
     # ── Per-frame update ──────────────────────────────────────────────────────
 
@@ -27,6 +31,8 @@ class InputManager:
         self._mouse_dx = 0
         self._mouse_dy = 0
         self._scroll   = 0
+        self.mouse_clicked = False
+        self.resize_event = None
 
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
@@ -50,11 +56,19 @@ class InputManager:
 
             elif event.type == pygame.MOUSEBUTTONDOWN:
                 self._mouse_buttons[event.button] = True
+                # Registra cliques do botão esquerdo para menus/HUD
+                if event.button == 1:
+                    self.mouse_clicked = True
+                    self._mouse_pos = event.pos
+
             elif event.type == pygame.MOUSEBUTTONUP:
                 self._mouse_buttons[event.button] = False
 
             elif event.type == pygame.MOUSEWHEEL:
                 self._scroll = event.y
+
+            elif event.type == pygame.VIDEORESIZE:
+                self.resize_event = (event.w, event.h)
 
     # ── Queries ───────────────────────────────────────────────────────────────
 
