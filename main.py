@@ -458,7 +458,7 @@ class Game:
         beat_path = os.path.join(_HERE, "assets", "models", "Beatrice", "Beatrice.obj")
         bx, by, bz = pos[0] + 1.2, pos[1], pos[2] - 0.5
         bnode = _load_obj_model(beat_path, position=(bx, by, bz),
-                                rotation=(0, 180, 0), scale=(1.0, 1.0, 1.0))
+                                rotation=(-90, 180, 0), scale=(1.0, 1.0, 1.0))
         if bnode is None:
             bv, bi = make_sphere(0.4, 10, 10)
             bm = ProceduralMesh("beatrice_fb", bv, bi, base_color=(0.7, 0.4, 0.9),
@@ -1626,7 +1626,7 @@ class Game:
             if self.current_floor == self.FLOOR_RHYTHM:
                 hint = "[Enter] Iniciar Ritmo  [Z] Bater no ritmo  [ESC] Pausar"
             submenu_open = self.hud.spell_menu_open or self.hud.item_menu_open or self.hud.skill_menu_open
-            hint_y = sh - 92 - (199 if submenu_open else 0)
+            hint_y = sh - 92 - (204 if submenu_open else 0)
             h.draw_text(hint, 10, hint_y, 11, (120,120,120))
 
             # Indicador de status da escada/passagem
