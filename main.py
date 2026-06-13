@@ -91,6 +91,87 @@ def _flash_color(re_, color):
 # Cache global de MeshData por caminho — evita re-parse de .obj a cada spawn
 _OBJ_CACHE: dict[str, list] = {}
 
+# Pasta dos modelos da torre
+MODEL_TOWER = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets", "models", "tower")
+
+
+def _load_tower_model(name, position=(0,0,0), rotation=(0,0,0), scale=(1,1,1)):
+    """Atalho para carregar modelos .obj da pasta assets/models/tower."""
+    path = os.path.join(MODEL_TOWER, f"{name}.obj")
+    return _load_obj_model(path, position=position, rotation=rotation, scale=scale)
+
+
+def _add_tower_deco(scene, floor_state, name, position, scale=(1,1,1), rotation=(0,0,0), collision_radius=1.0):
+    """Cria decoração procedural da torre (obelisk, crystal, platform, tower) com caminhos de textura corrigidos.
+    Não depende dos .obj — gera geometria interna para evitar cubos pretos sem física."""
+    x, y, z = position
+    sx, sy, sz = scale
+
+    node_texture = None
+    # Definindo a pasta base correta para as texturas
+    base_path = "assets/models/tower/"
+
+    if name == "obelisk":
+        # Pilar fino e alto
+        verts, idxs = make_cube(1.0)
+        mesh = ProceduralMesh("obelisk", verts, idxs,
+                              base_color=(0.25, 0.20, 0.35),
+                              ka=0.3, kd=0.7, ks=0.4, shininess=32)
+        
+        # Caminho corrigido: assets/models/tower/obsidian.png
+        node_texture = Texture(f"{base_path}obsidian.png")
+        
+        node = SceneNode("obelisk", mesh=mesh, texture=node_texture,
+                         position=[x, y + 2.0 * sy, z],
+                         scale=[0.4 * sx, 4.0 * sy, 0.4 * sz])
+
+    elif name == "crystal":
+        # Cristal: esfera achatada verticalmente com cor esverdeada
+        verts, idxs = make_sphere(0.5, 8, 8)
+        mesh = ProceduralMesh("crystal", verts, idxs,
+                              base_color=(0.15, 0.60, 0.55),
+                              ka=0.4, kd=0.6, ks=0.9, shininess=80)
+        
+        # Caminho corrigido: assets/models/tower/rune_crystal.png
+        node_texture = Texture(f"{base_path}rune_crystal.png")
+        
+        node = SceneNode("crystal", mesh=mesh, texture=node_texture,
+                         position=[x, y + 0.6 * sy, z],
+                         scale=[0.5 * sx, 1.2 * sy, 0.5 * sz])
+
+    elif name == "platform":
+        # Plataforma: cubo largo e baixo
+        verts, idxs = make_cube(1.0)
+        mesh = ProceduralMesh("platform", verts, idxs,
+                              base_color=(0.45, 0.40, 0.35),
+                              ka=0.3, kd=0.8, ks=0.2, shininess=12)
+        
+        # Caminho corrigido: assets/models/tower/tower_stone.png
+        node_texture = Texture(f"{base_path}tower_stone.png")
+        
+        node = SceneNode("platform", mesh=mesh, texture=node_texture,
+                         position=[x, y + 0.2 * sy, z],
+                         scale=[2.5 * sx, 0.4 * sy, 2.5 * sz])
+
+    elif name == "tower":
+        # Torre: cubo alto e estreito
+        verts, idxs = make_cube(1.0)
+        mesh = ProceduralMesh("tower", verts, idxs,
+                              base_color=(0.30, 0.25, 0.40),
+                              ka=0.3, kd=0.7, ks=0.3, shininess=16)
+        
+        # Caminho corrigido: assets/models/tower/tower_stone.png
+        node_texture = Texture(f"{base_path}tower_stone.png")
+        
+        node = SceneNode("tower", mesh=mesh, texture=node_texture,
+                         position=[x, y + 3.0 * sy, z],
+                         scale=[1.5 * sx, 6.0 * sy, 1.5 * sz])
+    else:
+        return None
+
+    scene.add(node)
+    floor_state.obstacles.append((x, z, collision_radius))
+    return node
 
 def _load_obj_model(path, position=(0,0,0), rotation=(0,0,0), scale=(1,1,1)):
     is_heartless = os.path.basename(path) == "Heartless.obj"
@@ -198,6 +279,8 @@ class FloorState:
         self.stair_locked    = True
         self.puzzle_solved   = False
         self.rhythm_done     = False
+        # Lista de obstáculos decorativos: (cx, cz, raio) para colisão push-out
+        self.obstacles       = []
         self.combat_wave     = 0    # qual onda de combate estamos
         self.all_clear       = False
         # Boss
@@ -405,6 +488,18 @@ class Game:
                                       position=(0, i*0.4, -10.5 - i*1.0)))
 
         self.floor_state.stair_locked = True
+
+        # Decoração: obeliscos encostados nas paredes laterais (x=±8.5, fora da área de passagem)
+        for sx in (-8.5, 8.5):
+            _add_tower_deco(self.scene, self.floor_state, "obelisk",
+                            position=(sx, 0.0, 0.0), scale=(1.5, 1.5, 1.5),
+                            collision_radius=1.2)
+
+        # Plataforma decorativa encostada na parede sul (atrás do spawn do player)
+        _add_tower_deco(self.scene, self.floor_state, "platform",
+                        position=(0.0, 0.0, 13.0), scale=(1.2, 1.2, 1.2),
+                        collision_radius=1.5)
+
         self.hud.add_popup("Avance pelo corredor...", 3.0, (200,200,255))
         self.hud.add_popup("[E/Enter] perto da porta para abrir", 5.0, (180,200,255))
 
@@ -527,6 +622,13 @@ class Game:
         self.scene.add(gate_node)
         self.floor_state.barrier_node = gate_node
         self.floor_state.rhythm_done  = False
+
+        # Cristais decorativos nas laterais da sala de ritmo (encostados nas paredes x=±8)
+        for cx, cz in [(-8.0, -2.0), (-8.0, 2.0), (8.0, -2.0), (8.0, 2.0)]:
+            _add_tower_deco(self.scene, self.floor_state, "crystal",
+                            position=(cx, 0.0, cz), scale=(1.0, 1.0, 1.0),
+                            collision_radius=0.9)
+
         self.hud.add_popup("Combate Rítmico! ENTER pra começar", 4.0, (100,255,200))
         self.hud.add_popup("[Z] quando chegar na barra 'amarela'!", 4.0, (200,255,220))
 
@@ -635,6 +737,23 @@ class Game:
         self.floor_state.boss      = boss_enemy
         self.floor_state.boss_node = boss_node
         self.floor_state.enemies   = [(boss_enemy, boss_node)]
+
+        # Torre ao fundo da sala do boss (encostada na parede norte, atrás de Emilia)
+        _add_tower_deco(self.scene, self.floor_state, "tower",
+                        position=(0.0, 0.0, -13.5), scale=(1.0, 1.0, 1.0),
+                        collision_radius=1.8)
+
+        # Cristais nas quinas da sala (encostados nas paredes)
+        for cx, cz in [(-8.5, -5.0), (8.5, -5.0), (-8.5, 5.0), (8.5, 5.0)]:
+            _add_tower_deco(self.scene, self.floor_state, "crystal",
+                            position=(cx, 0.0, cz), scale=(1.4, 1.4, 1.4),
+                            collision_radius=1.0)
+
+        # Plataformas encostadas nas paredes laterais, no meio da sala
+        for px in (-8.5, 8.5):
+            _add_tower_deco(self.scene, self.floor_state, "platform",
+                            position=(px, 0.0, 0.0), scale=(1.0, 1.0, 1.0),
+                            collision_radius=1.2)
 
         self.hud.add_popup("BOSS: MARLUXIA", 3.0, (255,80,255))
         self.hud.add_popup("Salve Emilia!", 3.5, (255,200,255))
@@ -1321,6 +1440,19 @@ class Game:
             self.current_floor != self.FLOOR_ENTRY or self.floor_state.barrier_active):
             north_limit = -9.5   # bate na barreira/portão
         p.world_pos[2]=max(north_limit,min(hd,p.world_pos[2]))
+
+        # Colisão push-out com obstáculos decorativos
+        for (ox, oz, radius) in self.floor_state.obstacles:
+            dx = p.world_pos[0] - ox
+            dz = p.world_pos[2] - oz
+            dist2 = dx*dx + dz*dz
+            min_dist = radius + 0.5   # 0.5 = raio do player
+            if dist2 < min_dist * min_dist and dist2 > 0.0001:
+                dist = math.sqrt(dist2)
+                push = (min_dist - dist) / dist
+                p.world_pos[0] += dx * push
+                p.world_pos[2] += dz * push
+
         self.player_node.position=[p.world_pos[0],p.world_pos[1]+0.5,p.world_pos[2]]
         self.player_node.rotation[1]=p.facing_deg
         self.camera.update_third_person(p.world_pos)
