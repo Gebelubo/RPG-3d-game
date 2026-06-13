@@ -137,6 +137,19 @@ class SceneNode:
         for child in self.children:
             child.draw(shader, model)
 
+    # ── Cleanup ───────────────────────────────────────────────────────────────
+
+    def cleanup(self):
+        """Libera recursivamente todos os recursos de GPU deste nó e filhos."""
+        for child in self.children:
+            child.cleanup()
+        if self.mesh is not None:
+            self.mesh.destroy()
+            self.mesh = None
+        if self.texture is not None and hasattr(self.texture, 'destroy'):
+            self.texture.destroy()
+            self.texture = None
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -170,6 +183,12 @@ class Scene:
 
         for node in self.nodes:
             node.draw(shader)
+
+    def cleanup(self):
+        """Destrói todos os recursos de GPU da cena. Chamar antes de descartar."""
+        for node in self.nodes:
+            node.cleanup()
+        self.nodes.clear()
 
     @property
     def _aspect(self):

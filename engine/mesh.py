@@ -37,6 +37,7 @@ class Mesh:
         self.shininess     = mesh_data.shininess
         self.texture_path  = mesh_data.texture_path
 
+        self._destroyed = False
         self._upload(mesh_data.vertices, mesh_data.indices)
 
     def _upload(self, vertices: np.ndarray, indices: np.ndarray):
@@ -72,13 +73,22 @@ class Mesh:
         glBindVertexArray(0)
 
     def draw(self):
+        if self._destroyed:
+            return
         glBindVertexArray(self.vao)
         glDrawElements(GL_TRIANGLES, self.index_count, GL_UNSIGNED_INT, None)
         glBindVertexArray(0)
 
     def destroy(self):
+        """Libera buffers de GPU. Seguro chamar múltiplas vezes."""
+        if self._destroyed:
+            return
+        self._destroyed = True
         glDeleteVertexArrays(1, [self.vao])
         glDeleteBuffers(2, [self.vbo, self.ibo])
+
+    # Alias para compatibilidade com Scene.cleanup()
+    cleanup = destroy
 
 
 # ── ctypes offset helper ──────────────────────────────────────────────────────
@@ -104,6 +114,7 @@ class ProceduralMesh(Mesh):
         self.ks          = ks
         self.shininess   = shininess
         self.texture_path = None
+        self._destroyed  = False
         self._upload(vertices, indices)
 
 

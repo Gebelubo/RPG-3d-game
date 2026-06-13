@@ -67,8 +67,40 @@ def make_box_mesh(name, w, h, d, color, ka=0.2, kd=0.8, ks=0.2, shin=16):
     return ProceduralMesh(name, verts, idxs, base_color=color, ka=ka, kd=kd, ks=ks, shininess=shin)
 
 
+def _collect_meshes(node):
+    """Retorna lista de objetos mesh do node e de todos os seus children (modelos .obj
+    carregam como um parent sem mesh + vários children com mesh)."""
+    meshes = []
+    if getattr(node, "mesh", None) is not None:
+        meshes.append(node.mesh)
+    for child in getattr(node, "children", []):
+        meshes.extend(_collect_meshes(child))
+    return meshes
+
+
+def _restore_colors(re_):
+    for m, c in zip(re_["meshes"], re_["orig_colors"]):
+        m.base_color = c
+
+
+def _flash_color(re_, color):
+    for m in re_["meshes"]:
+        m.base_color = color
+
+
+# Cache global de MeshData por caminho — evita re-parse de .obj a cada spawn
+_OBJ_CACHE: dict[str, list] = {}
+
+
 def _load_obj_model(path, position=(0,0,0), rotation=(0,0,0), scale=(1,1,1)):
-    mesh_data_list = OBJLoader().load(path)
+    is_heartless = os.path.basename(path) == "Heartless.obj"
+    if path not in _OBJ_CACHE:
+        try:
+            _OBJ_CACHE[path] = OBJLoader().load(path) or []
+        except Exception as exc:
+            print(f"OBJ load failed for {path}: {exc}")
+            _OBJ_CACHE[path] = []
+    mesh_data_list = _OBJ_CACHE[path]
     if not mesh_data_list:
         return None
     parent = SceneNode(
@@ -84,21 +116,28 @@ def _load_obj_model(path, position=(0,0,0), rotation=(0,0,0), scale=(1,1,1)):
             except Exception as exc:
                 print(f"Failed to load texture {md.texture_path}: {exc}")
         child = SceneNode(md.name, mesh=mesh, texture=texture)
-        if os.path.basename(path) == "Shadow.obj":
+        if is_heartless:
             child.position = [0.0, 0.5, -2.38]
+            child.rotation = [90.0, 0.0, 0.0]
         parent.children.append(child)
     return parent
 
 
-def _spawn_heartless(scene, pos, scale=(1.8,1.8,1.8), level=2, stationary=False):
+def _spawn_heartless(scene, pos, scale=(0.012,0.012,0.012), level=2, stationary=False, flying=False):
     """Spawna um heartless no mundo e retorna (enemy, node)."""
-    node = _load_obj_model(
-        os.path.join(_HERE, "assets", "models", "Heartless", "Shadow.obj"),
-        position=pos, rotation=(0,180,0), scale=scale
-    )
+    if flying:
+        model_path = os.path.join(_HERE, "assets", "models", "AerialKnocker", "AerialKnocker.obj")
+        model_scale = (scale[0] * 0.8, scale[1] * 0.8, scale[2] * 0.8)  # ajuste fino se necessário
+    else:
+        model_path = os.path.join(_HERE, "assets", "models", "Heartless", "Heartless.obj")
+        model_scale = scale
+
+    node = _load_obj_model(model_path, position=pos, rotation=(0,180,0), scale=model_scale)
+
     if node is None:
         ev, ei = make_sphere(0.45, 10, 10)
-        em = ProceduralMesh("heartless", ev, ei, base_color=(0.7,0.1,0.1),
+        color = (0.3, 0.3, 0.9) if flying else (0.7, 0.1, 0.1)
+        em = ProceduralMesh("heartless", ev, ei, base_color=color,
                             ka=0.3, kd=0.8, ks=0.3, shininess=16)
         node = SceneNode("heartless", mesh=em, position=list(pos))
     scene.add(node)
@@ -185,7 +224,8 @@ class Game:
         self._init_gl()
         self._init_shaders()
         self._init_game_state()
-        self._build_floor(self.FLOOR_ENTRY, show_story=True)
+        # Não carrega nenhum andar aqui — o menu já foi empurrado por _init_game_state.
+        # _build_floor só roda quando o jogador escolhe Nova Partida ou Continuar.
 
     # ── Init ─────────────────────────────────────────────────────────────────
 
@@ -232,7 +272,11 @@ class Game:
         self.rhythm_score    = 0
         self.rhythm_total    = 0
         self.rhythm_timer    = 0.0
-        self.rhythm_window   = 0.18
+        self.rhythm_window      = 0.20   # janela de acerto (centrada no beat)
+        self.rhythm_warn_window = 0.55   # janela de aviso visual (começa antes do beat)
+        self.rhythm_enemies    = []
+        self.rhythm_targets    = []
+        self.rhythm_active_idx = -1
         # Cutscene/story
         self.story_active    = False
         self.story_lines     = []
@@ -243,18 +287,29 @@ class Game:
         self.credits_active  = False
         self.credits_timer   = 0.0
         self.credits_y       = 0.0
+        # Fade de transição entre andares
+        self._fade_alpha      = 0.0
+        self._fade_duration   = 0.0
+        self._fade_callback   = None
+        self._fade_done       = True
+        self._fading             = False
+        self._fade_in            = False
+        self._post_fade_mode     = "explore"
+        self._fade_build_pending = False
         self._push_title_menu()
 
     # ── Cena base ─────────────────────────────────────────────────────────────
 
     def _clear_scene(self):
+        if hasattr(self, 'scene') and self.scene is not None:
+            self.scene.cleanup()
         self.scene = Scene()
         self.scene.set_aspect(self.screen_w / self.screen_h)
         self.floor_state = FloorState()
 
     def _build_room(self, floor_color=(0.22,0.18,0.28), wall_color=(0.28,0.22,0.35),
                     ceil_color=(0.15,0.12,0.20)):
-        pv, pi = make_plane(ROOM_W, ROOM_D, 10)
+        pv, pi = make_plane(ROOM_W, ROOM_D, 4)
         floor_mesh = ProceduralMesh("floor", pv, pi, base_color=floor_color,
                                     ka=0.3, kd=0.7, ks=0.1, shininess=8)
         floor_tex = ProceduralTexture(128, color_a=(55,45,70), color_b=(40,33,55))
@@ -291,7 +346,7 @@ class Game:
         self.player.on_ground  = True
         self.player_node = _load_obj_model(
             os.path.join(_HERE,"assets","models","Subaru","subaru.obj"),
-            position=pos, rotation=(0,180,0), scale=(0.25,0.25,0.25)
+            position=pos, rotation=(-90, 180, 0), scale=(1.0, 1.0, 1.0)
         )
         if self.player_node is None:
             sv, si = make_sphere(0.45,12,12)
@@ -354,24 +409,50 @@ class Game:
         self.hud.add_popup("[E/Enter] perto da porta para abrir", 5.0, (180,200,255))
 
     def _build_floor_puzzle(self):
-        """Andar 1: Puzzle + escada trancada."""
+        """Andar 1: Puzzle de imagem fragmentada + escada trancada."""
         self._build_room(floor_color=(0.18,0.16,0.28), wall_color=(0.26,0.20,0.38))
         self._place_player(pos=(0,0,12))
 
-        # 4 orbes de puzzle dispostos em quadrado
-        self.puzzle_orbs   = []
-        self.puzzle_target = []
-        orb_positions = [(-4,0.8,-2),(4,0.8,-2),(-4,0.8,2),(4,0.8,2)]
-        target_seq = [0,2,1,3]   # ordem correta de ativação
-        for idx, opos in enumerate(orb_positions):
-            ov, oi = make_sphere(0.4,14,14)
-            om = ProceduralMesh(f"orb_{idx}",ov,oi, base_color=(0.2,0.2,0.8),
-                                ka=0.8,kd=0.4,ks=0.6,shininess=48)
-            onode = SceneNode(f"orb_{idx}", mesh=om, position=list(opos))
-            self.scene.add(onode)
-            self.puzzle_orbs.append({"node":onode, "activated":False, "pos":opos})
-        self.puzzle_target = target_seq
-        self.puzzle_progress = []
+        # Quadro (moldura) na parede norte, onde os fragmentos serão encaixados
+        frame_w, frame_h = 4.0, 2.25   # proporção 16:9, igual à imagem original
+        frame_cx, frame_cy = 0.0, ROOM_H/2 + 0.4
+        fv, fi = make_plane(frame_w + 0.3, frame_h + 0.3, 1)
+        frame_mesh = ProceduralMesh("puzzle_frame", fv, fi, base_color=(0.45,0.35,0.10),
+                                     ka=0.6, kd=0.5, ks=0.6, shininess=32)
+        self.scene.add(SceneNode("puzzle_frame", mesh=frame_mesh,
+                                  position=(frame_cx, frame_cy, -8.92), rotation=(90,0,0)))
+        # Fundo escuro do quadro (onde os fragmentos faltantes mostram "vazio")
+        bv, bi = make_plane(frame_w, frame_h, 1)
+        backing_mesh = ProceduralMesh("puzzle_backing", bv, bi, base_color=(0.05,0.05,0.08),
+                                       ka=0.5, kd=0.3, ks=0.0, shininess=1)
+        self.scene.add(SceneNode("puzzle_backing", mesh=backing_mesh,
+                                  position=(frame_cx, frame_cy, -8.9), rotation=(90,0,0)))
+
+        # 4 fragmentos da imagem (couple.png), espalhados pela sala
+        piece_w, piece_h = frame_w/2, frame_h/2
+        pv, pi = make_plane(piece_w, piece_h, 1)
+        scatter_positions = [(-4,1.4,-2),(4,1.4,-2),(-4,1.4,2),(4,1.4,2)]
+        # offsets de cada fragmento dentro do quadro: invertido verticalmente (V-flip da textura)
+        # piece_0 (sup-esq da imagem) -> slot inferior-esq do quadro, etc.
+        # piece_0 (sup-esq da imagem) -> slot sup-esq do quadro, etc.
+        mural_offsets = [(-piece_w/2, piece_h/2), (piece_w/2, piece_h/2),
+                         (-piece_w/2,-piece_h/2), (piece_w/2,-piece_h/2)]
+        img_dir = os.path.join(_HERE, "assets", "images", "puzzle")
+
+        self.puzzle_pieces = []
+        for idx, spos in enumerate(scatter_positions):
+            tex = Texture(os.path.join(img_dir, f"piece_{idx}.png"))
+            pm = ProceduralMesh(f"puzzle_piece_{idx}", pv, pi, base_color=(1,1,1),
+                                 ka=0.9, kd=0.6, ks=0.1, shininess=8)
+            pnode = SceneNode(f"puzzle_piece_{idx}", mesh=pm, texture=tex,
+                              position=list(spos), rotation=(90,0,0))
+            self.scene.add(pnode)
+            mural_pos = (frame_cx + mural_offsets[idx][0],
+                          frame_cy + mural_offsets[idx][1], -8.9)
+            self.puzzle_pieces.append({
+                "node": pnode, "collected": False,
+                "scatter_pos": spos, "mural_pos": mural_pos,
+            })
         self.floor_state.puzzle_solved = False
 
         # Escada trancada (topo/norte)
@@ -385,8 +466,8 @@ class Game:
         self.scene.add(gate_node)
         self.floor_state.barrier_node = gate_node
 
-        self.hud.add_popup("Resolva o puzzle para avançar!", 3.0, (200,220,255))
-        self.hud.add_popup("[Z] perto de cada orbe para ativar (qualquer ordem)", 4.0, (180,180,220))
+        self.hud.add_popup("Junte os fragmentos espalhados pela sala!", 3.0, (200,220,255))
+        self.hud.add_popup("[Z] perto de cada fragmento para encaixá-lo no quadro", 4.0, (180,180,220))
 
     def _build_floor_aerial(self):
         """Andar 2: Heartless comuns no chão + heartless voadores."""
@@ -401,8 +482,8 @@ class Game:
 
         # Heartless voadores (altura y=3)
         for px, pz in [(-3,2),(3,2),(0,-2)]:
-            e, n = _spawn_heartless(self.scene, (px,3.0,pz), scale=(1.4,1.4,1.4), level=3)
-            e.is_flying    = True
+            e, n = _spawn_heartless(self.scene, (px,3.0,pz), scale=(0.0125,0.0125,0.0125), level=3, flying=True)
+            e.is_flying = True
             e.respawns_left = 0
             e.aggro_range  = 8.0
             self.floor_state.enemies.append((e,n))
@@ -423,9 +504,18 @@ class Game:
         self.hud.add_popup("[Espaço] pra pular e alcançá-los!", 4.0, (200,200,255))
 
     def _build_floor_rhythm(self):
-        """Andar 3: Minigame de ritmo para liberar a escada."""
+        """Andar 3: Combate rítmico — ataque os Heartless."""
         self._build_room(floor_color=(0.10,0.18,0.20), wall_color=(0.16,0.26,0.30))
         self._place_player(pos=(0,0,12))
+
+        # Heartless estacionários que servem de "alvo" do ritmo
+        self.rhythm_enemies = []
+        for px, pz in [(-3,-3),(0,-4),(3,-3)]:
+            e, n = _spawn_heartless(self.scene, (px,0.5,pz), level=2, stationary=True)
+            e.respawns_left = 0
+            meshes = _collect_meshes(n)
+            self.rhythm_enemies.append({"enemy": e, "node": n, "meshes": meshes,
+                                         "orig_colors": [tuple(m.base_color) for m in meshes]})
 
         # Escada bloqueada
         for i in range(5):
@@ -437,7 +527,8 @@ class Game:
         self.scene.add(gate_node)
         self.floor_state.barrier_node = gate_node
         self.floor_state.rhythm_done  = False
-        self.hud.add_popup("Minigame de Ritmo! Pressione ENTER para começar", 4.0, (100,255,200))
+        self.hud.add_popup("Combate Rítmico! ENTER pra começar", 4.0, (100,255,200))
+        self.hud.add_popup("[Z] quando chegar na barra 'amarela'!", 4.0, (200,255,220))
 
     def _build_floor_gauntlet(self):
         """Andar 4: Corredor final – todos os tipos de heartless."""
@@ -457,8 +548,8 @@ class Game:
             e.respawns_left = 0
             wave2.append((e,n))
         for px, pz in [(0,2),(-3,-1),(3,-1)]:
-            e, n = _spawn_heartless(self.scene, (px,3.0,pz), scale=(1.4,1.4,1.4), level=4)
-            e.is_flying = True; e.respawns_left = 0; e.aggro_range = 9.0
+            e, n = _spawn_heartless(self.scene, (px,3.0,pz), scale=(0.0125,0.0125,0.0125), level=4, flying=True)
+            e.is_flying = True
             wave2.append((e,n))
             n.visible = False  # wave2 começa invisível
 
@@ -511,8 +602,8 @@ class Game:
 
         # Emilia inconsciente ao fundo
         emilia_node = _load_obj_model(
-            os.path.join(_HERE,"assets","models","Emilia","emilia.obj"),
-            position=(0,0.0,-12), rotation=(90,0,0), scale=(1.8,1.8,1.8)
+            os.path.join(_HERE,"assets","models","Emilia","Emilia.obj"),
+            position=(0,0.0,-12), rotation=(-90,0,0), scale=(1.0,1.0,1.0)
         )
         if emilia_node:
             self.scene.add(emilia_node)
@@ -525,14 +616,14 @@ class Game:
                             ka=0.4,kd=0.7,ks=0.8,shininess=96)
         boss_node = SceneNode("marluxia", mesh=bm, position=(0,1.5,-8))
         # Tenta carregar modelo do Marluxia se existir
-        m_path = os.path.join(_HERE,"assets","models","Marluxia","marluxia.obj")
+        m_path = os.path.join(_HERE,"assets","models","Marluxia","Marluxia.obj")
         if os.path.exists(m_path):
-            loaded = _load_obj_model(m_path, position=(0,0,-8), rotation=(0,180,0), scale=(1.5,1.5,1.5))
+            loaded = _load_obj_model(m_path, position=(0,0,-8), rotation=(0,180,0), scale=(0.014,0.014,0.014))
             if loaded:
                 boss_node = loaded
 
         self.scene.add(boss_node)
-        boss_enemy = Enemy("Marluxia", level=boss_level, world_pos=[0.0,1.5,-8.0])
+        boss_enemy = Enemy("Marluxia", level=boss_level, world_pos=[0.0,0.0,-8.0])
         boss_enemy.stats.max_hp = boss_hp
         boss_enemy.stats.hp     = boss_hp
         boss_enemy.stats.atk    = 22
@@ -540,7 +631,7 @@ class Game:
         boss_enemy.aggro_range  = 12.0
         boss_enemy.attack_range = 2.2
         boss_enemy.respawns_left = 0
-        boss_enemy.spawn_pos    = [0.0,1.5,-8.0]
+        boss_enemy.spawn_pos = [0.0,0.0,-8.0]
         self.floor_state.boss      = boss_enemy
         self.floor_state.boss_node = boss_node
         self.floor_state.enemies   = [(boss_enemy, boss_node)]
@@ -725,13 +816,27 @@ class Game:
     # ── Floor progression ─────────────────────────────────────────────────────
 
     def _advance_floor(self):
-        """Salva e vai para o próximo andar."""
+        """Salva e vai para o próximo andar (com fade de transição)."""
         next_floor = self.current_floor + 1
         if next_floor > self.FLOOR_BOSS:
             return
-        save_game(next_floor, self.player)
+        def _do_transition():
+            save_game(next_floor, self.player)
+            self._build_floor(next_floor)
+            # NÃO setar game_mode aqui — _update_fade controla o retorno
+        self._start_fade(_do_transition, duration=0.35)
         self.hud.add_popup("Subindo para o próximo andar...", 2.0, (200,255,200))
-        self._build_floor(next_floor)
+
+    def _start_fade(self, callback, duration=0.35):
+        """Inicia um fade-to-black; executa callback no pico e faz fade-in."""
+        self._fade_alpha    = 0.0
+        self._fade_duration = duration
+        self._fade_callback = callback
+        self._fade_done     = False
+        self._fading        = True    # flag independente de game_mode
+        self._fade_in       = False
+        self.game_mode      = "fade"
+        self.input.capture_mouse(False)
 
     def _check_floor_progress(self):
         """Chamado após cada ação importante para ver se o andar foi completado."""
@@ -815,24 +920,25 @@ class Game:
 
     def _try_activate_orb(self):
         p = self.player
-        for idx, orb in enumerate(self.puzzle_orbs):
-            if orb["activated"]: continue
-            dx = orb["pos"][0] - p.world_pos[0]
-            dz = orb["pos"][2] - p.world_pos[2]
+        for piece in self.puzzle_pieces:
+            if piece["collected"]: continue
+            spos = piece["scatter_pos"]
+            dx = spos[0] - p.world_pos[0]
+            dz = spos[2] - p.world_pos[2]
             if math.sqrt(dx*dx+dz*dz) < 2.0:
-                orb["activated"] = True
-                orb["node"].mesh.base_color = (0.9,0.7,0.1)
-                self.puzzle_progress.append(idx)
-                self.hud.add_popup(f"Orbe {idx+1} ativado!", 1.5, (200,200,100))
+                piece["collected"] = True
+                node = piece["node"]
+                node.position = list(piece["mural_pos"])
+                self.hud.add_popup("Fragmento encaixado!", 1.5, (200,200,100))
                 self._check_puzzle()
                 return
 
     def _check_puzzle(self):
-        if len(self.puzzle_progress) == len(self.puzzle_target):
+        if all(p["collected"] for p in self.puzzle_pieces):
             self.floor_state.puzzle_solved = True
             self.floor_state.stair_locked = False
             self.floor_state.barrier_node.visible = False
-            self.hud.add_popup("Puzzle resolvido! Suba as escadas.", 3.0, (100,255,100))
+            self.hud.add_popup("Quadro completo! Suba as escadas.", 3.0, (100,255,100))
 
     # ── Rhythm game ───────────────────────────────────────────────────────────
 
@@ -844,33 +950,79 @@ class Game:
         self.rhythm_beats  = [1.0,1.5,2.0,2.7,3.2,4.0,4.5,5.0]
         self.rhythm_timer  = 0.0
         self.rhythm_hit    = [False]*len(self.rhythm_beats)
+        # cada beat tem um Heartless-alvo que vai "piscar"
+        n_en = len(self.rhythm_enemies)
+        self.rhythm_targets = [i % n_en for i in range(len(self.rhythm_beats))]
+        self.rhythm_active_idx = -1
+        # restaura HP/visibilidade dos heartless do ritmo
+        for re_ in self.rhythm_enemies:
+            re_["enemy"].dead = False
+            re_["enemy"].stats.hp = re_["enemy"].stats.max_hp
+            re_["node"].visible = True
+            _restore_colors(re_)
         self.game_mode     = "rhythm"
         self.input.capture_mouse(False)
-        self.hud.add_popup("Pressione Z no ritmo!", 2.0, (100,255,200))
+        self.hud.add_popup("Pressione Z quando chegar na barra amarela!", 2.0, (100,255,200))
 
     def _update_rhythm(self, dt):
         if not self.rhythm_active: return
         self.rhythm_timer += dt
-        # Verifica se algum beat passou sem ser acertado
-        for i, bt in enumerate(self.rhythm_beats):
-            if not self.rhythm_hit[i] and self.rhythm_timer > bt + self.rhythm_window + 0.2:
-                self.rhythm_hit[i] = True  # marcado como miss
+        t = self.rhythm_timer
 
-        if self.rhythm_timer > self.rhythm_beats[-1] + 1.0:
+        # Aviso visual: acende o heartless quando o beat está CHEGANDO (janela larga)
+        # O acerto real usa rhythm_window (janela estreita centrada no beat)
+        active_idx = -1
+        for i, bt in enumerate(self.rhythm_beats):
+            if not self.rhythm_hit[i] and (bt - self.rhythm_warn_window) <= t <= (bt + self.rhythm_window):
+                active_idx = self.rhythm_targets[i]
+                break
+        if active_idx != self.rhythm_active_idx:
+            for re_ in self.rhythm_enemies:
+                _restore_colors(re_)
+            if active_idx >= 0:
+                re_ = self.rhythm_enemies[active_idx]
+                _flash_color(re_, (1.0, 0.95, 0.2))  # pisca amarelo = "ataque agora!"
+            self.rhythm_active_idx = active_idx
+
+        # Verifica se algum beat passou sem ser acertado -> jogador toma dano
+        for i, bt in enumerate(self.rhythm_beats):
+            if not self.rhythm_hit[i] and t > bt + self.rhythm_window + 0.2:
+                self.rhythm_hit[i] = True  # marcado como miss
+                self._rhythm_player_damage()
+        if not self.rhythm_active:
+            return
+
+        if t > self.rhythm_beats[-1] + 1.0:
             # Jogo acabou
             self.rhythm_active = False
+            self.rhythm_active_idx = -1
+            for re_ in self.rhythm_enemies:
+                _restore_colors(re_)
             pct = self.rhythm_score / self.rhythm_total
             if pct >= 0.5:
                 self.floor_state.rhythm_done = True
                 self.floor_state.stair_locked = False
                 self.floor_state.barrier_node.visible = False
+                # Mata todos os heartless que ainda estiverem vivos
+                for re_ in self.rhythm_enemies:
+                    re_["enemy"].dead = True
+                    re_["node"].visible = False
                 self.hud.add_popup(f"Ritmo! {self.rhythm_score}/{self.rhythm_total} – Suba!", 3.0, (100,255,200))
-                self.game_mode = "explore"
-                self.input.capture_mouse(True)
             else:
                 self.hud.add_popup(f"Muito fora do ritmo! ({self.rhythm_score}/{self.rhythm_total}) Tente de novo.", 3.0, (255,100,100))
-                self.game_mode = "explore"
-                self.input.capture_mouse(True)
+            self.game_mode = "explore"
+            self.input.capture_mouse(True)
+
+    def _rhythm_player_damage(self, amount=8):
+        p = self.player
+        p.stats.hp = max(0, p.stats.hp - amount)
+        self.hud.add_popup(f"-{amount} HP", 1.0, (255,100,100))
+        if p.stats.hp <= 0:
+            self.rhythm_active = False
+            self.rhythm_active_idx = -1
+            for re_ in self.rhythm_enemies:
+                _restore_colors(re_)
+            self._trigger_death()
 
     def _rhythm_press(self):
         if not self.rhythm_active: return
@@ -879,9 +1031,20 @@ class Game:
             if not self.rhythm_hit[i] and abs(t - bt) <= self.rhythm_window:
                 self.rhythm_hit[i] = True
                 self.rhythm_score  += 1
+                # acerta o heartless que estava piscando
+                target = self.rhythm_enemies[self.rhythm_targets[i]]
+                e = target["enemy"]
+                if not e.dead:
+                    damage = max(1, self.player.stats.atk + random.randint(-2,2) - e.stats.defense)
+                    e.stats.take_damage(damage)
+                    self.hud.add_popup(f"-{damage} HP!", 1.0, (255,200,140))
+                    if not e.stats.is_alive():
+                        e.dead = True
+                        target["node"].visible = False
                 self.hud.add_popup("BEAT!", 0.5, (50,255,180))
                 return
         self.hud.add_popup("Miss...", 0.5, (255,80,80))
+        self._rhythm_player_damage(amount=4)
 
     # ── Input ─────────────────────────────────────────────────────────────────
 
@@ -1054,12 +1217,49 @@ class Game:
             self.credits_y   -= 40 * dt
             self.credits_timer += dt
             return
+        if getattr(self, '_fading', False):
+            self._update_fade(dt)
+            if self.game_mode == "fade":
+                return   # ainda no fade — não atualiza o resto
         if self.game_mode == "rhythm":
             self._update_rhythm(dt)
         if self.game_mode not in ("explore","rhythm"): return
         self._update_player(dt)
         self._update_enemies(dt)
         self.hud.update(dt)
+
+    def _update_fade(self, dt):
+        half = self._fade_duration
+        if not self._fade_in:
+            # Fase 1: escurece até preto
+            self._fade_alpha += dt / half
+            if self._fade_alpha >= 1.0:
+                self._fade_alpha = 1.0
+                self._fade_in    = True
+                # Agenda o build para o PRÓXIMO frame (tela já está preta)
+                self._fade_build_pending = True
+        elif getattr(self, '_fade_build_pending', False):
+            # Frame seguinte ao pico: executa cleanup + build com tela preta
+            self._fade_build_pending = False
+            if self._fade_callback and not self._fade_done:
+                self._fade_done = True
+                self._post_fade_mode = "explore"   # default seguro antes do callback
+                self._fade_callback()
+                # Se o builder mudou game_mode explicitamente (ex: FLOOR_REST -> "story"),
+                # captura isso; caso contrário mantém "explore"
+                if self.game_mode not in ("fade",):
+                    self._post_fade_mode = self.game_mode
+                self.game_mode = "fade"
+        else:
+            # Fase 2: clareia de volta
+            self._fade_alpha -= dt / half
+            if self._fade_alpha <= 0.0:
+                self._fade_alpha = 0.0
+                self._fading     = False
+                post = getattr(self, '_post_fade_mode', 'explore')
+                self.game_mode = post
+                if post == "explore":
+                    self.input.capture_mouse(True)
 
     def _update_player(self, dt):
         p = self.player
@@ -1151,6 +1351,10 @@ class Game:
         self.scene.draw(self.phong_shader, self.camera)
         glDisable(GL_DEPTH_TEST)
         self._draw_hud()
+        # Overlay de fade — desenhado por cima de tudo, em qualquer modo
+        if getattr(self, '_fade_alpha', 0.0) > 0.0:
+            self.hud.draw_rect(0, 0, self.screen_w, self.screen_h,
+                               (0.0, 0.0, 0.0), min(1.0, self._fade_alpha))
         glEnable(GL_DEPTH_TEST)
         pygame.display.flip()
 
