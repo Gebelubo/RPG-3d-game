@@ -109,7 +109,7 @@ def _add_tower_deco(scene, floor_state, name, position, scale=(1,1,1), rotation=
 
     node_texture = None
     # Definindo a pasta base correta para as texturas
-    base_path = "assets/models/tower/"
+    base_path = os.path.join(_HERE, "assets", "models", "tower") + os.sep
 
     if name == "obelisk":
         # Pilar fino e alto
@@ -175,6 +175,8 @@ def _add_tower_deco(scene, floor_state, name, position, scale=(1,1,1), rotation=
 
 def _load_obj_model(path, position=(0,0,0), rotation=(0,0,0), scale=(1,1,1)):
     is_heartless = os.path.basename(path) == "Heartless.obj"
+    is_beatrice  = os.path.basename(path) == "Beatrice.obj"
+    model_dir    = os.path.dirname(os.path.abspath(path))
     if path not in _OBJ_CACHE:
         try:
             _OBJ_CACHE[path] = OBJLoader().load(path) or []
@@ -192,14 +194,23 @@ def _load_obj_model(path, position=(0,0,0), rotation=(0,0,0), scale=(1,1,1)):
         mesh = Mesh(md)
         texture = None
         if md.texture_path:
+            # Sempre resolve pela pasta do .obj — ignora qualquer prefixo de caminho
+            # que o loader possa ter adicionado com base no cwd errado
+            tex_name = os.path.basename(md.texture_path)
+            tex_path = os.path.join(model_dir, tex_name)
+            if not os.path.exists(tex_path):
+                # Fallback: tenta o caminho original caso já seja absoluto e correto
+                tex_path = md.texture_path
             try:
-                texture = Texture(md.texture_path)
+                texture = Texture(tex_path)
             except Exception as exc:
-                print(f"Failed to load texture {md.texture_path}: {exc}")
+                print(f"Failed to load texture {tex_path}: {exc}")
         child = SceneNode(md.name, mesh=mesh, texture=texture)
         if is_heartless:
             child.position = [0.0, 0.5, -2.38]
             child.rotation = [90.0, 0.0, 0.0]
+        if is_beatrice:
+            child.rotation = [0.0, 0.0, 0.0]   # sem rotação extra no child
         parent.children.append(child)
     return parent
 
@@ -349,6 +360,9 @@ class Game:
         self.camera = Camera()
         self.scene.set_aspect(self.screen_w / self.screen_h)
         self.player_node = None
+        # Beatrice — aparece ao lado do Subaru ao usar certas magias
+        self.beatrice_node  = None
+        self.beatrice_timer = 0.0
         # Minigame de ritmo
         self.rhythm_active   = False
         self.rhythm_beats    = []
@@ -389,6 +403,8 @@ class Game:
         self.scene = Scene()
         self.scene.set_aspect(self.screen_w / self.screen_h)
         self.floor_state = FloorState()
+        self.beatrice_node  = None
+        self.beatrice_timer = 0.0
 
     def _build_room(self, floor_color=(0.22,0.18,0.28), wall_color=(0.28,0.22,0.35),
                     ceil_color=(0.15,0.12,0.20)):
@@ -437,6 +453,21 @@ class Game:
                                 ka=0.3,kd=0.8,ks=0.4,shininess=24)
             self.player_node = SceneNode("subaru",mesh=pm,position=list(pos))
         self.scene.add(self.player_node)
+
+        # Pre-carrega Beatrice oculta (evita lag ao invocar)
+        beat_path = os.path.join(_HERE, "assets", "models", "Beatrice", "Beatrice.obj")
+        bx, by, bz = pos[0] + 1.2, pos[1], pos[2] - 0.5
+        bnode = _load_obj_model(beat_path, position=(bx, by, bz),
+                                rotation=(0, 180, 0), scale=(1.0, 1.0, 1.0))
+        if bnode is None:
+            bv, bi = make_sphere(0.4, 10, 10)
+            bm = ProceduralMesh("beatrice_fb", bv, bi, base_color=(0.7, 0.4, 0.9),
+                                ka=0.5, kd=0.7, ks=0.6, shininess=48)
+            bnode = SceneNode("beatrice_fb", mesh=bm, position=[bx, by + 0.5, bz])
+        bnode.visible = False
+        self.scene.add(bnode)
+        self.beatrice_node  = bnode
+        self.beatrice_timer = 0.0
 
     # ── Build floors ──────────────────────────────────────────────────────────
 
@@ -850,7 +881,7 @@ class Game:
         def quit_game():
             pygame.quit(); sys.exit(0)
 
-        title_menu = Menu("=== Torre de Plêiades ===", [
+        title_menu = Menu("Torre de Plêiades", [
             MenuItem("Nova Partida",  start),
             MenuItem("Continuar",     continue_game),
             MenuItem("Sair",          quit_game),
@@ -870,7 +901,7 @@ class Game:
         def title():
             self.menus.clear(); self._push_title_menu()
             self.input.capture_mouse(False)
-        self.menus.push(Menu("── PAUSADO ──", [
+        self.menus.push(Menu("Pausado", [
             MenuItem("Continuar",      resume),
             MenuItem("Salvar",         save),
             MenuItem("Menu Principal", title),
@@ -888,7 +919,7 @@ class Game:
         def flee():
             if self.combat:
                 self.combat.player_flee(); self._check_combat_end()
-        self.menus.push(Menu("── COMBATE ──", [
+        self.menus.push(Menu("Combate", [
             MenuItem("Atacar",  attack),
             MenuItem("Poção",   use_potion),
             MenuItem("Fugir",   flee),
@@ -1290,6 +1321,7 @@ class Game:
                 self.hud.add_popup("MP insuficiente!", 1.5, (100,100,255)); return
         if spell_id == "emt":
             self.player.stats.shield_time = 10.0
+            self._show_beatrice()
             self.hud.add_popup("EMT ativado! Protegido por 10s", 2.0, (80,220,255)); return
         nearest = None; nearest_dist = 999.0
         for e, node in self.floor_state.enemies:
@@ -1303,8 +1335,11 @@ class Game:
         e, node, _ = nearest
         if spell_id == "shamac":
             e.blind_time = 10.0; e.aggro = False
+            self._show_beatrice()
             self.hud.add_popup(f"Shamac! {e.stats.name} perdeu sua pista.", 2.2, (180,120,255)); return
         dmg = e.stats.take_damage(sp.damage)
+        if spell_id == "minya":
+            self._show_beatrice()
         self.hud.add_popup(f"{sp.name}! -{dmg} HP", 2.0, (180,120,255))
         if not e.stats.is_alive():
             e.dead = True; node.visible = False
@@ -1324,6 +1359,16 @@ class Game:
         if hasattr(item,"heal_mp") and item.heal_mp > 0:
             self.player.stats.mp = min(self.player.stats.max_mp, self.player.stats.mp+item.heal_mp)
         self.hud.add_popup(f"Usou {item.name}", 1.5, (120,255,120))
+
+    def _show_beatrice(self, duration=2.0):
+        """Torna a Beatrice visível ao lado do Subaru por `duration` segundos."""
+        if self.beatrice_node is None:
+            return  # modelo não carregou nem como fallback
+        p = self.player.world_pos
+        self.beatrice_node.position = [p[0] + 1.2, p[1], p[2] - 0.5]
+        self.beatrice_node.rotation[1] = self.player_node.rotation[1]
+        self.beatrice_node.visible = True
+        self.beatrice_timer = duration
 
     # ── Update ────────────────────────────────────────────────────────────────
 
@@ -1346,6 +1391,15 @@ class Game:
         self._update_player(dt)
         self._update_enemies(dt)
         self.hud.update(dt)
+        # Beatrice — segue o Subaru e some quando o timer zera
+        if self.beatrice_node is not None and self.beatrice_timer > 0.0:
+            self.beatrice_timer -= dt
+            p = self.player.world_pos
+            self.beatrice_node.position = [p[0] + 1.2, p[1], p[2] - 0.5]
+            self.beatrice_node.rotation[1] = self.player_node.rotation[1]
+            if self.beatrice_timer <= 0.0:
+                self.beatrice_node.visible = False
+                # NÃO zera a referência — node fica na cena, só invisível
 
     def _update_fade(self, dt):
         half = self._fade_duration
@@ -1571,7 +1625,9 @@ class Game:
                 hint = "[WASD] Mover  [Z] Ativar orbe (perto)  [X] Magia  [ESC] Pausar"
             if self.current_floor == self.FLOOR_RHYTHM:
                 hint = "[Enter] Iniciar Ritmo  [Z] Bater no ritmo  [ESC] Pausar"
-            h.draw_text(hint, 10, sh-24, 11, (120,120,120))
+            submenu_open = self.hud.spell_menu_open or self.hud.item_menu_open or self.hud.skill_menu_open
+            hint_y = sh - 92 - (199 if submenu_open else 0)
+            h.draw_text(hint, 10, hint_y, 11, (120,120,120))
 
             # Indicador de status da escada/passagem
             if self.current_floor in (self.FLOOR_ENTRY, self.FLOOR_PUZZLE,
