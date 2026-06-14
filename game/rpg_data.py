@@ -241,7 +241,7 @@ class Enemy:
 
 class Player:
     WALK_SPEED  = 5.0
-    JUMP_FORCE  = 8.0
+    JUMP_FORCE  = 12.0
     GRAVITY     = -18.0
     ROLL_SPEED  = 9.0
     ROLL_TIME   = 0.45

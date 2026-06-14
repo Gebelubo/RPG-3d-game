@@ -1,1 +1,1 @@
-{"floor": 6, "hp": 500, "mp": 110, "max_hp": 500, "max_mp": 110, "level": 6, "xp": 155, "xp_next": 757, "atk": 27, "defense": 14, "inventory": {"tracksuit": 1}, "gold": 0}
+{"floor": 1, "hp": 411, "mp": 70, "max_hp": 420, "max_mp": 70, "level": 2, "xp": 60, "xp_next": 150, "atk": 15, "defense": 6, "inventory": {"health_potion_s": 3, "mana_potion": 2, "tracksuit": 1}, "gold": 0}

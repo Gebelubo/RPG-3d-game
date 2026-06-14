@@ -1471,21 +1471,32 @@ class Game:
                 p.is_rolling=False; p.velocity[0]=p.velocity[2]=0.0
         if not p.on_ground:
             p.velocity[1] += p.GRAVITY*dt
-        p.world_pos[0] += p.velocity[0]*dt
-        p.world_pos[1] += p.velocity[1]*dt
-        p.world_pos[2] += p.velocity[2]*dt
+
+        p.world_pos[0] += p.velocity[0] * dt
+        p.world_pos[2] += p.velocity[2] * dt
+
         ground_y = 0.0
-        # Física das escadas: elevar o player conforme ele caminha sobre elas
         if p.world_pos[2] < -10.0:
-            # Escadas vão de z=-10.5 a z=-14.5, y de 0 a 1.6
             stair_z_start = -10.5
             stair_z_end   = -14.5
             stair_h_max   = 1.6
             t = (p.world_pos[2] - stair_z_start) / (stair_z_end - stair_z_start)
             t = max(0.0, min(1.0, t))
             ground_y = t * stair_h_max
+
+        if p.world_pos[1] > ground_y + 0.02:
+            p.on_ground = False
+
+        if not p.on_ground:
+            p.velocity[1] += p.GRAVITY * dt
+
+        p.world_pos[1] += p.velocity[1] * dt
+
         if p.world_pos[1] < ground_y:
-            p.world_pos[1]=ground_y; p.velocity[1]=0.0; p.on_ground=True
+            p.world_pos[1] = ground_y
+            p.velocity[1] = 0.0
+            p.on_ground = True
+
         hw=ROOM_W/2-0.6; hd=ROOM_D/2-0.6
         p.world_pos[0]=max(-hw,min(hw,p.world_pos[0]))
         # Impedir de passar pela parede norte se escada está trancada
