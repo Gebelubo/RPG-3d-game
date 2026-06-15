@@ -25,6 +25,8 @@ Andares da torre:
   6 - Sala do boss         (Marluxia + Emilia inconsciente)
 """
 
+import time
+
 import os, sys, math, random, json
 import pygame
 from pygame.locals import DOUBLEBUF, OPENGL, RESIZABLE
@@ -175,7 +177,6 @@ def _add_tower_deco(scene, floor_state, name, position, scale=(1,1,1), rotation=
 
 def _load_obj_model(path, position=(0,0,0), rotation=(0,0,0), scale=(1,1,1)):
     is_heartless = os.path.basename(path) == "Heartless.obj"
-    is_beatrice  = os.path.basename(path) == "Beatrice.obj"
     model_dir    = os.path.dirname(os.path.abspath(path))
     if path not in _OBJ_CACHE:
         try:
@@ -192,6 +193,7 @@ def _load_obj_model(path, position=(0,0,0), rotation=(0,0,0), scale=(1,1,1)):
     )
     for md in mesh_data_list:
         mesh = Mesh(md)
+
         texture = None
         if md.texture_path:
             # Sempre resolve pela pasta do .obj — ignora qualquer prefixo de caminho
@@ -208,10 +210,10 @@ def _load_obj_model(path, position=(0,0,0), rotation=(0,0,0), scale=(1,1,1)):
         child = SceneNode(md.name, mesh=mesh, texture=texture)
         if is_heartless:
             child.position = [0.0, 0.5, -2.38]
-            child.rotation = [90.0, 0.0, 0.0]
-        if is_beatrice:
-            child.rotation = [0.0, 0.0, 0.0]   # sem rotação extra no child
+        child.position[1] = -0.5
+
         parent.children.append(child)
+
     return parent
 
 
@@ -444,8 +446,8 @@ class Game:
         self.player.velocity   = [0,0,0]
         self.player.on_ground  = True
         self.player_node = _load_obj_model(
-            os.path.join(_HERE,"assets","models","Subaru","subaru.obj"),
-            position=pos, rotation=(-90, 180, 0), scale=(1.0, 1.0, 1.0)
+            os.path.join(_HERE,"assets","models","Subaru","Subaru.obj"),
+            position=pos, rotation=(0, 180, 0), scale=(1.0, 1.0, 1.0)
         )
         if self.player_node is None:
             sv, si = make_sphere(0.45,12,12)
@@ -458,7 +460,7 @@ class Game:
         beat_path = os.path.join(_HERE, "assets", "models", "Beatrice", "Beatrice.obj")
         bx, by, bz = pos[0] + 1.2, pos[1], pos[2] - 0.5
         bnode = _load_obj_model(beat_path, position=(bx, by, bz),
-                                rotation=(-90, 180, 0), scale=(1.0, 1.0, 1.0))
+                                rotation=(0, 180, 0), scale=(1.0, 1.0, 1.0))
         if bnode is None:
             bv, bi = make_sphere(0.4, 10, 10)
             bm = ProceduralMesh("beatrice_fb", bv, bi, base_color=(0.7, 0.4, 0.9),
@@ -736,7 +738,7 @@ class Game:
         # Emilia inconsciente ao fundo
         emilia_node = _load_obj_model(
             os.path.join(_HERE,"assets","models","Emilia","Emilia.obj"),
-            position=(0,0.0,-12), rotation=(-90,0,0), scale=(1.0,1.0,1.0)
+            position=(0,0.0,-12), rotation=(0,0,0), scale=(1.0,1.0,1.0)
         )
         if emilia_node:
             self.scene.add(emilia_node)
@@ -1476,7 +1478,9 @@ class Game:
         p.world_pos[2] += p.velocity[2] * dt
 
         ground_y = 0.0
+        # Física das escadas: elevar o player conforme ele caminha sobre elas
         if p.world_pos[2] < -10.0:
+            # Escadas vão de z=-10.5 a z=-14.5, y de 0 a 1.6
             stair_z_start = -10.5
             stair_z_end   = -14.5
             stair_h_max   = 1.6
@@ -1484,6 +1488,7 @@ class Game:
             t = max(0.0, min(1.0, t))
             ground_y = t * stair_h_max
 
+        
         if p.world_pos[1] > ground_y + 0.02:
             p.on_ground = False
 
@@ -1496,7 +1501,7 @@ class Game:
             p.world_pos[1] = ground_y
             p.velocity[1] = 0.0
             p.on_ground = True
-
+            
         hw=ROOM_W/2-0.6; hd=ROOM_D/2-0.6
         p.world_pos[0]=max(-hw,min(hw,p.world_pos[0]))
         # Impedir de passar pela parede norte se escada está trancada

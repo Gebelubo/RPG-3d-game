@@ -177,10 +177,25 @@ class OBJLoader:
         vertices = np.array(vbo_data, dtype=np.float32).reshape(-1, 8)
         indices  = np.array(ibo_data,  dtype=np.uint32)
 
+        # OBJ files are typically Z-up; engine uses Y-up.
+        self._convert_zup_to_yup(vertices)
+
         # ── Compute flat normals if none supplied ─────────────────────────────
         if not norms:
             self._compute_normals(vertices, indices)
         return MeshData(name=group["name"], vertices=vertices, indices=indices)
+
+    def _convert_zup_to_yup(self, vertices: np.ndarray):
+        """Remap OBJ Z-up coordinates to engine Y-up (rotate -90° around X)."""
+        x, y, z = vertices[:, 0].copy(), vertices[:, 1].copy(), vertices[:, 2].copy()
+        vertices[:, 0] = x
+        vertices[:, 1] = z
+        vertices[:, 2] = -y
+
+        nx, ny, nz = vertices[:, 3].copy(), vertices[:, 4].copy(), vertices[:, 5].copy()
+        vertices[:, 3] = nx
+        vertices[:, 4] = nz
+        vertices[:, 5] = -ny
 
     def _compute_normals(self, vertices: np.ndarray, indices: np.ndarray):
         """Fill normals column (3:6) using face cross products."""
