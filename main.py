@@ -232,19 +232,19 @@ def _load_obj_model(path, position=(0,0,0), rotation=(0,0,0), scale=(1,1,1)):
         mesh = Mesh(md)
 
         texture = None
-        if md.texture_path:
+        if mesh.texture_path:
             # Sempre resolve pela pasta do .obj — ignora qualquer prefixo de caminho
             # que o loader possa ter adicionado com base no cwd errado
-            tex_name = os.path.basename(md.texture_path)
+            tex_name = os.path.basename(mesh.texture_path)
             tex_path = os.path.join(model_dir, tex_name)
             if not os.path.exists(tex_path):
                 # Fallback: tenta o caminho original caso já seja absoluto e correto
-                tex_path = md.texture_path
+                tex_path = mesh.texture_path
             try:
                 texture = Texture(tex_path)
             except Exception as exc:
                 print(f"Failed to load texture {tex_path}: {exc}")
-        child = SceneNode(md.name, mesh=mesh, texture=texture)
+        child = SceneNode(mesh.name, mesh=mesh, texture=texture)
         #if is_heartless:
         #    child.position[1] -= 1.5
         #    child.rotation = [0.0, 180.0, 180.0]
@@ -1581,6 +1581,27 @@ class Game:
         self.player_node.rotation[1]=p.facing_deg
         self.camera.update_third_person(p.world_pos)
 
+        PLAYER_RADIUS = 0.5
+        ENEMY_RADIUS = 0.6
+
+        for e, node in self.floor_state.enemies:
+            if e.dead:
+                continue
+
+            dx = self.player.world_pos[0] - e.world_pos[0]
+            dz = self.player.world_pos[2] - e.world_pos[2]
+
+            dist2 = dx*dx + dz*dz
+            min_dist = PLAYER_RADIUS + ENEMY_RADIUS
+
+            if dist2 < min_dist * min_dist and dist2 > 0.0001:
+                dist = math.sqrt(dist2)
+
+                push = (min_dist - dist) / dist
+
+                self.player.world_pos[0] += dx * push
+                self.player.world_pos[2] += dz * push
+
     def _update_enemies(self, dt):
         for e, node in self.floor_state.enemies:
             if e.dead: continue
@@ -1598,6 +1619,33 @@ class Game:
                         self.hud.add_popup(f"-{dmg} HP", 1.2, (255,80,80))
                         if self.player.is_dead:
                             self._trigger_death()
+        ENEMY_RADIUS = 0.6
+
+        enemies = [e for e, node in self.floor_state.enemies if not e.dead]
+
+        for i in range(len(enemies)):
+            for j in range(i + 1, len(enemies)):
+
+                e1 = enemies[i]
+                e2 = enemies[j]
+
+                dx = e1.world_pos[0] - e2.world_pos[0]
+                dz = e1.world_pos[2] - e2.world_pos[2]
+
+                dist2 = dx*dx + dz*dz
+                min_dist = ENEMY_RADIUS * 2
+
+                if dist2 < min_dist * min_dist and dist2 > 0.0001:
+
+                    dist = math.sqrt(dist2)
+
+                    push = (min_dist - dist) / dist * 0.5
+
+                    e1.world_pos[0] += dx * push
+                    e1.world_pos[2] += dz * push
+
+                    e2.world_pos[0] -= dx * push
+                    e2.world_pos[2] -= dz * push
 
     # ── Render ────────────────────────────────────────────────────────────────
 
