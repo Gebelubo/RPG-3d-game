@@ -62,11 +62,48 @@ ROOM_W = 20.0
 ROOM_D = 30.0
 ROOM_H = 8.0
 
+STAIR_COUNT     = 5
+STAIR_WIDTH     = 3.0
+STAIR_STEP_H    = 0.4
+STAIR_STEP_D    = 1.2
+STAIR_Z_START   = -10.5
+STAIR_Z_SPACING = 1.0
+
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 def make_box_mesh(name, w, h, d, color, ka=0.2, kd=0.8, ks=0.2, shin=16):
     verts, idxs = make_cube(1.0)
+    verts = verts.copy()
+    verts[:, 0] *= w / 2.0
+    verts[:, 1] *= h / 2.0
+    verts[:, 2] *= d / 2.0
     return ProceduralMesh(name, verts, idxs, base_color=color, ka=ka, kd=kd, ks=ks, shininess=shin)
+
+
+def _stair_step_bounds(i: int) -> dict:
+    y_bot = i * STAIR_STEP_H
+    y_top = (i + 1) * STAIR_STEP_H
+    zc = STAIR_Z_START - i * STAIR_Z_SPACING
+    half_w = STAIR_WIDTH / 2.0
+    half_d = STAIR_STEP_D / 2.0
+    return {
+        "x0": -half_w, "x1": half_w,
+        "z0": zc - half_d, "z1": zc + half_d,
+        "y0": y_bot, "y1": y_top,
+    }
+
+
+def _build_stairs(scene, floor_state):
+    """Cria degraus visuais e marca o andar como tendo escada com colisão."""
+    for i in range(STAIR_COUNT):
+        y_center = i * STAIR_STEP_H + STAIR_STEP_H / 2.0
+        z_center = STAIR_Z_START - i * STAIR_Z_SPACING
+        sm = make_box_mesh(
+            f"stair_{i}", STAIR_WIDTH, STAIR_STEP_H, STAIR_STEP_D,
+            color=(0.50, 0.45, 0.40),
+        )
+        scene.add(SceneNode(f"stair_{i}", mesh=sm, position=(0, y_center, z_center)))
+    floor_state.has_stairs = True
 
 
 def _collect_meshes(node):
@@ -176,7 +213,7 @@ def _add_tower_deco(scene, floor_state, name, position, scale=(1,1,1), rotation=
     return node
 
 def _load_obj_model(path, position=(0,0,0), rotation=(0,0,0), scale=(1,1,1)):
-    is_heartless = os.path.basename(path) == "Heartless.obj"
+    #is_heartless = os.path.basename(path) == "Heartless.obj"
     model_dir    = os.path.dirname(os.path.abspath(path))
     if path not in _OBJ_CACHE:
         try:
@@ -208,8 +245,10 @@ def _load_obj_model(path, position=(0,0,0), rotation=(0,0,0), scale=(1,1,1)):
             except Exception as exc:
                 print(f"Failed to load texture {tex_path}: {exc}")
         child = SceneNode(md.name, mesh=mesh, texture=texture)
-        if is_heartless:
-            child.position = [0.0, 0.5, -2.38]
+        #if is_heartless:
+        #    child.position[1] -= 1.5
+        #    child.rotation = [0.0, 180.0, 180.0]
+        #else:
         child.position[1] = -0.5
 
         parent.children.append(child)
@@ -225,8 +264,9 @@ def _spawn_heartless(scene, pos, scale=(0.012,0.012,0.012), level=2, stationary=
     else:
         model_path = os.path.join(_HERE, "assets", "models", "Heartless", "Heartless.obj")
         model_scale = scale
+        pos = (pos[0], pos[1] - 0.5, pos[2])  # ajuste para alinhar com o chão
 
-    node = _load_obj_model(model_path, position=pos, rotation=(0,180,0), scale=model_scale)
+    node = _load_obj_model(model_path, position=pos, rotation=(180,0,0), scale=model_scale)
 
     if node is None:
         ev, ei = make_sphere(0.45, 10, 10)
@@ -290,6 +330,7 @@ class FloorState:
         self.barrier_node    = None
         self.door_node       = None
         self.stair_locked    = True
+        self.has_stairs      = False
         self.puzzle_solved   = False
         self.rhythm_done     = False
         # Lista de obstáculos decorativos: (cx, cz, raio) para colisão push-out
@@ -501,7 +542,7 @@ class Game:
         # Porta no fundo do corredor (Norte, Z=-13)
         dv, di = make_cube(1.0)
         dm = make_box_mesh("door",3.0,4.0,0.3, color=(0.35,0.22,0.10), ka=0.2,kd=0.7,ks=0.3,shin=24)
-        door_node = SceneNode("door", mesh=dm, position=(0,2.0,-13.5), scale=(1,1,1))
+        door_node = SceneNode("door", mesh=dm, position=(0, 4.0,-15), scale=(1,1,1))
         self.scene.add(door_node)
         self.floor_state.door_node = door_node
 
@@ -515,11 +556,7 @@ class Game:
         self.floor_state.barrier_active = False
 
         # Escada no fundo (atrás da barreira)
-        for i in range(5):
-            sm = make_box_mesh(f"stair_{i}",3.0,0.4,1.2, color=(0.50,0.45,0.40))
-            self.scene.add(SceneNode(f"stair_{i}", mesh=sm,
-                                      position=(0, i*0.4, -10.5 - i*1.0)))
-
+        _build_stairs(self.scene, self.floor_state)
         self.floor_state.stair_locked = True
 
         # Decoração: obeliscos encostados nas paredes laterais (x=±8.5, fora da área de passagem)
@@ -584,10 +621,7 @@ class Game:
         self.floor_state.puzzle_solved = False
 
         # Escada trancada (topo/norte)
-        for i in range(5):
-            sm = make_box_mesh(f"stair_{i}",3.0,0.4,1.2, color=(0.50,0.45,0.40))
-            self.scene.add(SceneNode(f"stair_{i}", mesh=sm,
-                                      position=(0, i*0.4, -10.5 - i*1.0)))
+        _build_stairs(self.scene, self.floor_state)
         # Portão trancado
         gm = make_box_mesh("gate",3.2,2.0,0.3, color=(0.5,0.4,0.1))
         gate_node = SceneNode("gate", mesh=gm, position=(0,1.0,-10.5))
@@ -619,10 +653,7 @@ class Game:
         self.floor_state.stair_locked = True
 
         # Escada (visível, mas trancada até derrotar os heartless)
-        for i in range(5):
-            sm = make_box_mesh(f"stair_{i}",3.0,0.4,1.2, color=(0.50,0.45,0.40))
-            self.scene.add(SceneNode(f"stair_{i}", mesh=sm,
-                                      position=(0, i*0.4, -10.5 - i*1.0)))
+        _build_stairs(self.scene, self.floor_state)
         gm = make_box_mesh("gate_a",3.2,2.0,0.3, color=(0.5,0.3,0.1))
         gate_node = SceneNode("gate_a", mesh=gm, position=(0,1.0,-10.5))
         self.scene.add(gate_node)
@@ -646,10 +677,7 @@ class Game:
                                          "orig_colors": [tuple(m.base_color) for m in meshes]})
 
         # Escada bloqueada
-        for i in range(5):
-            sm = make_box_mesh(f"stair_{i}",3.0,0.4,1.2, color=(0.50,0.45,0.40))
-            self.scene.add(SceneNode(f"stair_{i}", mesh=sm,
-                                      position=(0, i*0.4, -10.5 - i*1.0)))
+        _build_stairs(self.scene, self.floor_state)
         gm = make_box_mesh("gate_r",3.2,2.0,0.3, color=(0.1,0.4,0.5))
         gate_node = SceneNode("gate_r", mesh=gm, position=(0,1.0,-10.5))
         self.scene.add(gate_node)
@@ -1436,6 +1464,41 @@ class Game:
                 if post == "explore":
                     self.input.capture_mouse(True)
 
+    def _stair_ground_y(self, px: float, pz: float) -> float:
+        """Altura do chão nos degraus; fora da faixa da escada retorna 0."""
+        if not self.floor_state.has_stairs or abs(px) > STAIR_WIDTH / 2.0:
+            return 0.0
+        ground = 0.0
+        for i in range(STAIR_COUNT):
+            b = _stair_step_bounds(i)
+            if b["z0"] <= pz <= b["z1"]:
+                ground = max(ground, b["y1"])
+        return ground
+
+    def _resolve_stair_collisions(self, p):
+        """Impede atravessar os degraus pelas laterais/frente (volume sólido)."""
+        if not self.floor_state.has_stairs:
+            return
+        px, py, pz = p.world_pos
+        pr = 0.5
+        for i in range(STAIR_COUNT):
+            b = _stair_step_bounds(i)
+            if py >= b["y1"] - 0.08:
+                continue
+            cx = max(b["x0"], min(px, b["x1"]))
+            cz = max(b["z0"], min(pz, b["z1"]))
+            dx = px - cx
+            dz = pz - cz
+            dist2 = dx * dx + dz * dz
+            if dist2 >= pr * pr or dist2 < 1e-8:
+                continue
+            dist = math.sqrt(dist2)
+            push = (pr - dist) / dist
+            px += dx * push
+            pz += dz * push
+        p.world_pos[0] = px
+        p.world_pos[2] = pz
+
     def _update_player(self, dt):
         p = self.player
         keys = self.input.held_keys
@@ -1477,18 +1540,9 @@ class Game:
         p.world_pos[0] += p.velocity[0] * dt
         p.world_pos[2] += p.velocity[2] * dt
 
-        ground_y = 0.0
-        # Física das escadas: elevar o player conforme ele caminha sobre elas
-        if p.world_pos[2] < -10.0:
-            # Escadas vão de z=-10.5 a z=-14.5, y de 0 a 1.6
-            stair_z_start = -10.5
-            stair_z_end   = -14.5
-            stair_h_max   = 1.6
-            t = (p.world_pos[2] - stair_z_start) / (stair_z_end - stair_z_start)
-            t = max(0.0, min(1.0, t))
-            ground_y = t * stair_h_max
+        self._resolve_stair_collisions(p)
 
-        
+        ground_y = self._stair_ground_y(p.world_pos[0], p.world_pos[2])
         if p.world_pos[1] > ground_y + 0.02:
             p.on_ground = False
 
