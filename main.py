@@ -261,12 +261,14 @@ def _spawn_heartless(scene, pos, scale=(0.012,0.012,0.012), level=2, stationary=
     if flying:
         model_path = os.path.join(_HERE, "assets", "models", "AerialKnocker", "AerialKnocker.obj")
         model_scale = (scale[0] * 0.8, scale[1] * 0.8, scale[2] * 0.8)  # ajuste fino se necessário
+        rotation = (0, 180, 0)
     else:
         model_path = os.path.join(_HERE, "assets", "models", "Heartless", "Heartless.obj")
         model_scale = scale
         pos = (pos[0], pos[1] - 0.5, pos[2])  # ajuste para alinhar com o chão
+        rotation = (180, 0, 0)
 
-    node = _load_obj_model(model_path, position=pos, rotation=(180,0,0), scale=model_scale)
+    node = _load_obj_model(model_path, position=pos, rotation=rotation, scale=model_scale)
 
     if node is None:
         ev, ei = make_sphere(0.45, 10, 10)
@@ -765,7 +767,7 @@ class Game:
 
         # Emilia inconsciente ao fundo
         emilia_node = _load_obj_model(
-            os.path.join(_HERE,"assets","models","Emilia","Emilia.obj"),
+            os.path.join(_HERE,"assets","models","Emilia","emilia.obj"),
             position=(0,0.0,-12), rotation=(0,0,0), scale=(1.0,1.0,1.0)
         )
         if emilia_node:
@@ -777,11 +779,11 @@ class Game:
         bv, bi = make_sphere(0.9,16,16)
         bm = ProceduralMesh("marluxia",bv,bi, base_color=(0.7,0.1,0.8),
                             ka=0.4,kd=0.7,ks=0.8,shininess=96)
-        boss_node = SceneNode("marluxia", mesh=bm, position=(0,1.5,-8))
+        boss_node = SceneNode("marluxia", mesh=bm, position=(0,1.5,-8), rotation=(0,0,0), scale=(1.0,1.0,1.0))
         # Tenta carregar modelo do Marluxia se existir
         m_path = os.path.join(_HERE,"assets","models","Marluxia","Marluxia.obj")
         if os.path.exists(m_path):
-            loaded = _load_obj_model(m_path, position=(0,0,-8), rotation=(0,180,0), scale=(0.014,0.014,0.014))
+            loaded = _load_obj_model(m_path, position=(0,0,-8), rotation=(90,0,0), scale=(0.014,0.014,0.014))
             if loaded:
                 boss_node = loaded
 
