@@ -451,39 +451,150 @@ class Game:
         self.beatrice_node  = None
         self.beatrice_timer = 0.0
 
-    def _build_room(self, floor_color=(0.22,0.18,0.28), wall_color=(0.28,0.22,0.35),
-                    ceil_color=(0.15,0.12,0.20)):
+    def _build_room(
+        self,
+        floor_color=(0.22, 0.18, 0.28),
+        wall_color=(0.28, 0.22, 0.35),
+        ceil_color=(0.15, 0.12, 0.20)
+    ):
+        # Piso
         pv, pi = make_plane(ROOM_W, ROOM_D, 4)
-        floor_mesh = ProceduralMesh("floor", pv, pi, base_color=floor_color,
-                                    ka=0.3, kd=0.7, ks=0.1, shininess=8)
-        floor_tex = ProceduralTexture(128, color_a=(55,45,70), color_b=(40,33,55))
-        self.scene.add(SceneNode("floor", mesh=floor_mesh, texture=floor_tex))
-        ceiling_mesh = ProceduralMesh("ceiling", pv, pi, base_color=ceil_color,
-                                       ka=0.2, kd=0.6, ks=0.05, shininess=4)
-        self.scene.add(SceneNode("ceiling", mesh=ceiling_mesh,
-                                  position=(0, ROOM_H, 0), rotation=(180,0,0)))
-        pv2, pi2 = make_plane(ROOM_W, ROOM_H, 1)
+
+        floor_mesh = ProceduralMesh(
+            "floor",
+            pv,
+            pi,
+            base_color=floor_color,
+            ka=0.3,
+            kd=0.7,
+            ks=0.1,
+            shininess=8
+        )
+
+        floor_tex = ProceduralTexture(
+            128,
+            color_a=(55, 45, 70),
+            color_b=(40, 33, 55)
+        )
+
+        self.scene.add(
+            SceneNode(
+                "floor",
+                mesh=floor_mesh,
+                texture=floor_tex
+            )
+        )
+
+        # Teto
+        ceiling_mesh = ProceduralMesh(
+            "ceiling",
+            pv,
+            pi,
+            base_color=ceil_color,
+            ka=0.2,
+            kd=0.6,
+            ks=0.05,
+            shininess=4
+        )
+
+        self.scene.add(
+            SceneNode(
+                "ceiling",
+                mesh=ceiling_mesh,
+                position=(0, ROOM_H, 0),
+                rotation=(180, 0, 0)
+            )
+        )
+
+        # =========================
+        # Paredes Norte e Sul
+        # =========================
+
+        pv_ns, pi_ns = make_plane(ROOM_W, ROOM_H, 1)
+
         for name, pos, rot in [
-            ("wall_n", (0, ROOM_H/2, -ROOM_D/2), (90,0,0)),
-            ("wall_s", (0, ROOM_H/2,  ROOM_D/2), (-90,180,0)),
-            ("wall_w", (-ROOM_W/2, ROOM_H/2, 0), (0,0,-90)),
-            ("wall_e", ( ROOM_W/2, ROOM_H/2, 0), (0,0, 90)),
+            ("wall_n", (0, ROOM_H / 2, -ROOM_D / 2), (90, 0, 0)),
+            ("wall_s", (0, ROOM_H / 2,  ROOM_D / 2), (-90, 180, 0)),
         ]:
-            wm = ProceduralMesh(name, pv2, pi2, base_color=wall_color,
-                                ka=0.25, kd=0.75, ks=0.1, shininess=8)
-            self.scene.add(SceneNode(name, mesh=wm, position=pos, rotation=rot))
+            wm = ProceduralMesh(
+                name,
+                pv_ns,
+                pi_ns,
+                base_color=wall_color,
+                ka=0.25,
+                kd=0.75,
+                ks=0.1,
+                shininess=8
+            )
 
-        self.scene.light.orbit    = False
-        self.scene.light.pos      = [0.0, ROOM_H - 1.5, 0.0]
+            self.scene.add(
+                SceneNode(
+                    name,
+                    mesh=wm,
+                    position=pos,
+                    rotation=rot
+                )
+            )
+
+        # =========================
+        # Paredes Leste e Oeste
+        # =========================
+
+        pv_ew, pi_ew = make_plane(ROOM_D, ROOM_H, 1)
+
+        for name, pos, rot in [
+            ("wall_w", (-ROOM_W / 2, ROOM_H / 2, 0), (90, 90, 0)),
+            ("wall_e", ( ROOM_W / 2, ROOM_H / 2, 0), (90,-90, 0)),
+        ]:
+            wm = ProceduralMesh(
+                name,
+                pv_ew,
+                pi_ew,
+                base_color=wall_color,
+                ka=0.25,
+                kd=0.75,
+                ks=0.1,
+                shininess=8
+            )
+
+            self.scene.add(
+                SceneNode(
+                    name,
+                    mesh=wm,
+                    position=pos,
+                    rotation=rot
+                )
+            )
+
+        # Luz
+        self.scene.light.orbit = False
+        self.scene.light.pos = [0.0, ROOM_H - 1.5, 0.0]
         self.scene.light.intensity = 1.2
-        self.scene.light.color    = np.array([0.8,0.6,1.0], dtype=np.float32)
-        lv, li = make_sphere(0.18, 8, 8)
-        lm = ProceduralMesh("light_ball", lv, li, base_color=(1.0,0.9,0.5),
-                             ka=1.0, kd=0.0, ks=0.0, shininess=1)
-        self.light_node = SceneNode("light_vis", mesh=lm,
-                                    position=[0.0, ROOM_H-1.5, 0.0])
-        self.scene.add(self.light_node)
+        self.scene.light.color = np.array(
+            [0.8, 0.6, 1.0],
+            dtype=np.float32
+        )
 
+        lv, li = make_sphere(0.18, 8, 8)
+
+        lm = ProceduralMesh(
+            "light_ball",
+            lv,
+            li,
+            base_color=(1.0, 0.9, 0.5),
+            ka=1.0,
+            kd=0.0,
+            ks=0.0,
+            shininess=1
+        )
+
+        self.light_node = SceneNode(
+            "light_vis",
+            mesh=lm,
+            position=[0.0, ROOM_H - 1.5, 0.0]
+        )
+
+        self.scene.add(self.light_node)
     def _place_player(self, pos=(0,0,10)):
         self.player.world_pos  = list(pos)
         self.player.velocity   = [0,0,0]
