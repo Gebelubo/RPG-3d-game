@@ -48,6 +48,9 @@ from engine.texture    import Texture, ProceduralTexture
 from engine.obj_loader import OBJLoader
 from engine.camera     import Camera
 from engine.scene      import Scene, SceneNode, PointLight
+from engine.gltf_loader  import GLTFLoader
+from engine.skinned_mesh import SkinnedMesh
+from engine.animation    import AnimationController
 from engine.input_manager import InputManager
 from game.rpg_data     import Player, Stats, Enemy, SPELL_DB, SPELL_LIST, ITEM_DB
 from hud               import HUD
@@ -256,6 +259,134 @@ def _load_obj_model(path, position=(0,0,0), rotation=(0,0,0), scale=(1,1,1)):
     return parent
 
 
+# Cache global de SkinnedMeshData (com bones/clips já parseados) por caminho de .glb
+# — mesma ideia do _OBJ_CACHE, evita reparsear o .glb a cada troca de andar.
+_SKINNED_CACHE: dict[str, list] = {}
+
+# Pasta com os .glb do Subaru (gerados por tools/fbx_to_glb.py a partir dos FBX)
+SUBARU_GLB_DIR = os.path.join(_HERE, "assets", "models", "Subaru")
+SUBARU_GLB_FILES = {
+    "Idle":     os.path.join(SUBARU_GLB_DIR, "subaru_idle.glb"),
+    "Walking":  os.path.join(SUBARU_GLB_DIR, "subaru_walking.glb"),
+    "Jumping":  os.path.join(SUBARU_GLB_DIR, "subaru_jumping.glb"),
+    "Punching": os.path.join(SUBARU_GLB_DIR, "subaru_punching.glb"),
+    "Reaction": os.path.join(SUBARU_GLB_DIR, "subaru_hit.glb"),
+}
+
+
+def _load_skinned_player(position=(0, 0, 0), rotation=(0, 180, 0)):
+    """
+    Carrega a SkinnedMesh do Subaru + monta o AnimationController com os
+    clipes Idle/Walking/Jumping/Punching/Reaction (cada um vindo de um .glb
+    diferente, todos compartilhando o mesmo esqueleto/bind pose).
+
+    Retorna (scene_node, skinned_mesh, anim_controller) ou (None, None, None)
+    se os .glb ainda não existirem (nesse caso main.py cai no fallback OBJ).
+    """
+    cache_key = tuple(sorted(SUBARU_GLB_FILES.items()))
+    if cache_key not in _SKINNED_CACHE:
+        try:
+            loader = GLTFLoader()
+            primary_path = SUBARU_GLB_FILES["Walking"]
+            if not os.path.isfile(primary_path):
+                _SKINNED_CACHE[cache_key] = None
+            else:
+                # geometria + esqueleto vêm do primeiro .glb (Walking)
+                # load_merged une as 5 sub-meshes (corpo, cabeça, cabelo, etc.)
+                # num único SkinnedMeshData, corrigindo o bug da cabeça sumida.
+                smd = loader.load_merged(primary_path)
+                if smd is None:
+                    raise ValueError("nenhuma primitive com skin encontrada")
+
+                # Cada .glb do Mixamo exporta o clipe com o mesmo nome genérico
+                # "Armature|mixamo.com|Layer0". Renomeamos aqui para os nomes
+                # lógicos do jogo (Walking/Punching/Reaction) que o
+                # AnimationController espera via DEFAULT_CLIP_NAMES.
+                renamed_clips = {}
+                for clip_key, glb_path in SUBARU_GLB_FILES.items():
+                    if not os.path.isfile(glb_path):
+                        continue
+                    try:
+                        part = loader.load_merged(glb_path) if clip_key != "Walking" else smd
+                        if part and part.clips:
+                            # pega o primeiro (e único) clipe do arquivo
+                            original_clip = next(iter(part.clips.values()))
+                            renamed_clips[clip_key] = original_clip
+                    except Exception as exc:
+                        print(f"Falha ao carregar clipe extra {glb_path}: {exc}")
+                smd.clips = renamed_clips
+
+                # Textura: os .glb não embutem textura (export sem materials).
+                # Fallback: usa a textura de corpo que existe ao lado dos modelos.
+                if not smd.texture_path:
+                    fallback = os.path.join(SUBARU_GLB_DIR, "tx_Subaru_00_Body_Base.png")
+                    smd.texture_path = fallback if os.path.isfile(fallback) else None
+
+                _SKINNED_CACHE[cache_key] = smd
+        except Exception as exc:
+            print(f"GLB load failed for Subaru: {exc}")
+            _SKINNED_CACHE[cache_key] = None
+
+    smd = _SKINNED_CACHE[cache_key]
+    if smd is None:
+        return None, None, None
+
+    skinned_mesh = SkinnedMesh(smd)
+    # Não passamos root_transform aqui: a correção de escala é feita de forma
+    # uniforme no node (auto_scale abaixo), aplicar as duas juntas causaria
+    # escala dupla.
+    anim_controller = AnimationController(smd.bones, smd.clips)
+
+    # Correção automática de escala: medir só os vértices crus (bind pose,
+    # sem skinning) não bate com o tamanho final, porque o "gigante" pode vir
+    # do PRÓPRIO skinning (bone matrices com unidade diferente da malha —
+    # ex.: bones exportados em cm enquanto os vértices já estão em metros).
+    # Por isso aplicamos o skinning de verdade (igual o shader faria) numa
+    # amostra dos vértices e medimos o resultado — é o tamanho real que
+    # apareceria na tela, não importa onde o descompasso de escala mora.
+    SUBARU_TARGET_HEIGHT = 1.8  # metros, mesma unidade do resto do mundo (ROOM_H=8)
+    auto_scale = getattr(smd, "_auto_scale", None)
+    if auto_scale is None:
+        bone_matrices = anim_controller.get_bone_matrices()  # estado "idle" (default)
+        bm = np.stack(bone_matrices, axis=0)               # (B,4,4)
+
+        positions = smd.vertices[:, :3]
+        ones = np.ones((positions.shape[0], 1), dtype=np.float32)
+        pos_h = np.concatenate([positions, ones], axis=1)   # (N,4)
+
+        skinned_y = np.zeros(positions.shape[0], dtype=np.float32)
+        for k in range(smd.joints.shape[1]):                # até 4 influências
+            joint_idx = smd.joints[:, k].astype(np.int64)
+            w = smd.weights[:, k]
+            bm_k = bm[joint_idx]                             # (N,4,4)
+            transformed = np.einsum('nij,nj->ni', bm_k, pos_h)  # (N,4)
+            skinned_y += w * transformed[:, 1]
+
+        raw_height = float(skinned_y.max() - skinned_y.min()) if len(skinned_y) else 0.0
+        auto_scale = (SUBARU_TARGET_HEIGHT / raw_height) if raw_height > 1e-4 else 1.0
+        smd._auto_scale = auto_scale
+
+    node = SceneNode(
+        "subaru_skinned",
+        position=list(position), rotation=list(rotation),
+        scale=[auto_scale, auto_scale, auto_scale]
+    )
+    # SceneNode.draw() espera node.mesh ser um engine.mesh.Mesh (chama .draw()
+    # e lê .base_color/.ka/.kd/.ks/.shininess) — SkinnedMesh replica essa
+    # interface, então funciona como "mesh" mesmo sem herdar de Mesh.
+    node.mesh = skinned_mesh
+
+    texture = None
+    if smd.texture_path:
+        try:
+            texture = Texture(smd.texture_path)
+        except Exception as exc:
+            print(f"Failed to load Subaru texture {smd.texture_path}: {exc}")
+    node.texture = texture
+
+    return node, skinned_mesh, anim_controller
+
+
 def _spawn_heartless(scene, pos, scale=(0.012,0.012,0.012), level=2, stationary=False, flying=False):
     """Spawna um heartless no mundo e retorna (enemy, node)."""
     if flying:
@@ -383,8 +514,11 @@ class Game:
     def _init_shaders(self):
         def sh(v, f):
             return ShaderProgram(os.path.join(SHADER_DIR, v), os.path.join(SHADER_DIR, f))
-        self.phong_shader = sh("phong.vert", "phong.frag")
-        self.unlit_shader = sh("unlit.vert", "unlit.frag")
+        self.phong_shader   = sh("phong.vert", "phong.frag")
+        self.unlit_shader   = sh("unlit.vert", "unlit.frag")
+        # Shader paralelo ao phong, só para meshes com esqueleto (Subaru animado).
+        # Reaproveita phong.frag sem alteração — só o vertex muda (skinning).
+        self.skinned_shader = sh("skinned.vert", "phong.frag")
 
     def _init_game_state(self):
         self.input       = InputManager()
@@ -403,6 +537,11 @@ class Game:
         self.camera = Camera()
         self.scene.set_aspect(self.screen_w / self.screen_h)
         self.player_node = None
+        # Mesh/animação skinned do Subaru (None enquanto não houver .glb carregado
+        # com sucesso — nesse caso o fallback continua usando _load_obj_model/OBJ).
+        self.player_skinned_mesh = None
+        self.player_anim         = None
+        self.player_texture      = None
         # Beatrice — aparece ao lado do Subaru ao usar certas magias
         self.beatrice_node  = None
         self.beatrice_timer = 0.0
@@ -443,6 +582,14 @@ class Game:
     def _clear_scene(self):
         if hasattr(self, 'scene') and self.scene is not None:
             self.scene.cleanup()
+        # O Subaru skinned não vive em self.scene.nodes (precisa de outro
+        # shader — ver _place_player), então precisa ser destruído à parte
+        # para não vazar VAO/VBO da GPU a cada troca de andar.
+        if getattr(self, 'player_skinned_mesh', None) is not None:
+            self.player_skinned_mesh.destroy()
+            self.player_skinned_mesh = None
+        self.player_anim = None
+        self.player_node = None
         self.scene = Scene()
         self.scene.set_aspect(self.screen_w / self.screen_h)
         self.floor_state = FloorState()
@@ -486,16 +633,32 @@ class Game:
         self.player.world_pos  = list(pos)
         self.player.velocity   = [0,0,0]
         self.player.on_ground  = True
-        self.player_node = _load_obj_model(
-            os.path.join(_HERE,"assets","models","Subaru","Subaru.obj"),
-            position=pos, rotation=(0, 180, 0), scale=(1.0, 1.0, 1.0)
+
+        # Tenta carregar o Subaru animado (skinning); cai pro .obj estático
+        # se os .glb ainda não tiverem sido gerados por tools/fbx_to_glb.py.
+        skinned_node, skinned_mesh, anim_controller = _load_skinned_player(
+            position=pos, rotation=(0, 180, 0)
         )
-        if self.player_node is None:
-            sv, si = make_sphere(0.45,12,12)
-            pm = ProceduralMesh("subaru",sv,si,base_color=(0.2,0.35,0.6),
-                                ka=0.3,kd=0.8,ks=0.4,shininess=24)
-            self.player_node = SceneNode("subaru",mesh=pm,position=list(pos))
-        self.scene.add(self.player_node)
+        if skinned_node is not None:
+            self.player_node         = skinned_node
+            self.player_skinned_mesh = skinned_mesh
+            self.player_anim         = anim_controller
+            # NÃO adiciona ao self.scene — Scene.draw() usa um único shader
+            # (phong_shader) para todos os nós, e o Subaru skinned precisa do
+            # skinned_shader (uBoneMatrices). Ele é desenhado à parte em _render().
+        else:
+            self.player_skinned_mesh = None
+            self.player_anim         = None
+            self.player_node = _load_obj_model(
+                os.path.join(_HERE,"assets","models","Subaru","Subaru.obj"),
+                position=pos, rotation=(0, 180, 0), scale=(1.0, 1.0, 1.0)
+            )
+            if self.player_node is None:
+                sv, si = make_sphere(0.45,12,12)
+                pm = ProceduralMesh("subaru",sv,si,base_color=(0.2,0.35,0.6),
+                                    ka=0.3,kd=0.8,ks=0.4,shininess=24)
+                self.player_node = SceneNode("subaru",mesh=pm,position=list(pos))
+            self.scene.add(self.player_node)
 
         # Pre-carrega Beatrice oculta (evita lag ao invocar)
         beat_path = os.path.join(_HERE, "assets", "models", "Beatrice", "Beatrice.obj")
@@ -1070,6 +1233,8 @@ class Game:
         p.is_attacking = True; p.attack_timer = 0.4
         p.attack_cd = 0.6
         p.combo_count = (p.combo_count + 1) % 3; p.combo_timer = 0.8
+        if self.player_anim is not None:
+            self.player_anim.play("punching", restart_if_same=True)
         hit = False
         for e, node in self.floor_state.enemies:
             if e.dead: continue
@@ -1196,6 +1361,8 @@ class Game:
     def _rhythm_player_damage(self, amount=8):
         p = self.player
         p.stats.hp = max(0, p.stats.hp - amount)
+        p.is_taking_damage = True
+        p.reaction_timer = p.REACTION_TIME
         self.hud.add_popup(f"-{amount} HP", 1.0, (255,100,100))
         if p.stats.hp <= 0:
             self.rhythm_active = False
@@ -1509,6 +1676,10 @@ class Game:
         else:                  p.combo_count   = 0
         if p.invincible > 0:   p.invincible   -= dt
         if p.stats.shield_time > 0: p.stats.shield_time -= dt
+        if p.reaction_timer > 0:
+            p.reaction_timer -= dt
+            if p.reaction_timer <= 0:
+                p.is_taking_damage = False
 
         move_x, move_z = 0.0, 0.0
         fwd = self.camera.flat_forward; rgt = self.camera.flat_right
@@ -1581,6 +1752,8 @@ class Game:
         self.player_node.rotation[1]=p.facing_deg
         self.camera.update_third_person(p.world_pos)
 
+        self._update_player_animation(p, dt)
+
         PLAYER_RADIUS = 0.5
         ENEMY_RADIUS = 0.6
 
@@ -1602,6 +1775,24 @@ class Game:
                 self.player.world_pos[0] += dx * push
                 self.player.world_pos[2] += dz * push
 
+    def _update_player_animation(self, p, dt):
+        """Decide qual estado de animação tocar e avança o AnimationController.
+        Prioridade: reaction (tomou dano) > jumping (no ar) > punching (ataque,
+        já disparado em _player_melee_attack) > walking/idle conforme
+        velocidade no plano XZ."""
+        if self.player_anim is None:
+            return
+
+        if p.is_taking_damage:
+            self.player_anim.play("reaction")
+        elif not p.on_ground:
+            self.player_anim.play("jumping")
+        elif not self.player_anim.is_playing("punching") or self.player_anim.finished_one_shot():
+            moving = (p.velocity[0]**2 + p.velocity[2]**2) > 0.01
+            self.player_anim.play("walking" if moving else "idle")
+
+        self.player_anim.update(dt)
+
     def _update_enemies(self, dt):
         for e, node in self.floor_state.enemies:
             if e.dead: continue
@@ -1616,6 +1807,8 @@ class Game:
                     dmg = e.try_attack(self.player.stats)
                     if dmg > 0:
                         self.player.invincible = 0.5
+                        self.player.is_taking_damage = True
+                        self.player.reaction_timer = self.player.REACTION_TIME
                         self.hud.add_popup(f"-{dmg} HP", 1.2, (255,80,80))
                         if self.player.is_dead:
                             self._trigger_death()
@@ -1653,6 +1846,7 @@ class Game:
         glPolygonMode(GL_FRONT_AND_BACK, GL_LINE if self.wireframe else GL_FILL)
         glClear(GL_COLOR_BUFFER_BIT|GL_DEPTH_BUFFER_BIT)
         self.scene.draw(self.phong_shader, self.camera)
+        self._render_skinned_player()
         glDisable(GL_DEPTH_TEST)
         self._draw_hud()
         # Overlay de fade — desenhado por cima de tudo, em qualquer modo
@@ -1661,6 +1855,45 @@ class Game:
                                (0.0, 0.0, 0.0), min(1.0, self._fade_alpha))
         glEnable(GL_DEPTH_TEST)
         pygame.display.flip()
+
+    def _render_skinned_player(self):
+        """Desenha o Subaru animado (skinning) com skinned_shader, fora do
+        Scene.draw() normal — ver comentário em _place_player."""
+        if self.player_anim is None or self.player_skinned_mesh is None:
+            return
+        shader = self.skinned_shader
+        shader.use()
+        shader.set_mat4("uView",       self.camera.view_matrix())
+        shader.set_mat4("uProjection", self.camera.projection_matrix(self.scene._aspect))
+        shader.set_vec3("uViewPos",    self.camera.position)
+        self.scene.light.apply(shader)
+
+        node = self.player_node
+        model = node.model_matrix(None)
+        shader.set_mat4("uModel", model)
+        from engine.math3d import mat3_normal_matrix
+        shader.set_mat3("uNormalMatrix", mat3_normal_matrix(model))
+
+        bone_matrices = self.player_anim.get_bone_matrices()
+        shader.set_mat4_array("uBoneMatrices", bone_matrices)
+
+        if node.texture:
+            node.texture.bind(0)
+            shader.set_bool("uUseTexture", True)
+            shader.set_int("uTexture", 0)
+        else:
+            shader.set_bool("uUseTexture", False)
+            shader.set_vec3("uBaseColor", self.player_skinned_mesh.base_color)
+
+        shader.set_float("uAmbientStrength",  self.player_skinned_mesh.ka)
+        shader.set_float("uDiffuseStrength",  self.player_skinned_mesh.kd)
+        shader.set_float("uSpecularStrength", self.player_skinned_mesh.ks)
+        shader.set_float("uShininess",        self.player_skinned_mesh.shininess)
+
+        self.player_skinned_mesh.draw()
+
+        if node.texture:
+            node.texture.unbind()
 
     def _draw_hud(self):
         h=self.hud; sw=self.screen_w; sh=self.screen_h

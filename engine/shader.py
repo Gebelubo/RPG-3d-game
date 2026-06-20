@@ -80,6 +80,15 @@ class ShaderProgram:
     def set_mat4(self, name: str, mat: np.ndarray):
         glUniformMatrix4fv(self._loc(name), 1, False, mat.T.astype(np.float32))
 
+    def set_mat4_array(self, name: str, mats: list):
+        """Sobe um array de mat4 (ex.: uBoneMatrices[100]) em uma única chamada.
+        'mats' é list[np.ndarray (4,4)]. Usado pelo skinning (engine/animation.py)."""
+        if not mats:
+            return
+        count = len(mats)
+        flat = np.stack([m.T.astype(np.float32) for m in mats], axis=0)  # (count,4,4)
+        glUniformMatrix4fv(self._loc(name), count, False, flat)
+
     def set_mat3(self, name: str, mat: np.ndarray):
         glUniformMatrix3fv(self._loc(name), 1, False, mat.T.astype(np.float32))
 
