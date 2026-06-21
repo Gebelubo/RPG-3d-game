@@ -270,6 +270,11 @@ class Player:
         self.combo_timer   = 0.0
         self.invincible    = 0.0  # i-frames
 
+        # Animação de reação a dano (Reaction clip)
+        self.is_taking_damage = False
+        self.reaction_timer   = 0.0
+        self.REACTION_TIME    = 0.5  # duração da animação de reação, em segundos
+
     @property
     def is_dead(self): return not self.stats.is_alive()
 
