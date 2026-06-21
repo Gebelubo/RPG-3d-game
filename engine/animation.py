@@ -1,11 +1,11 @@
 """
 animation.py  –  AnimationController.
 
-Mantém o estado de animação atual (idle / walking / punching / reaction),
-avança o tempo, faz um blend simples (crossfade linear) entre o clipe
-anterior e o novo ao trocar de estado, e expõe get_bone_matrices() — a
-lista de mat4 finais (uma por osso) pronta para subir como uniform array
-no skinned.vert (uBoneMatrices[]).
+Mantém o estado de animação atual (idle / walking / punching / reaction /
+beatrice / invisibleprovidence / item), avança o tempo, faz um blend simples
+(crossfade linear) entre o clipe anterior e o novo ao trocar de estado, e
+expõe get_bone_matrices() — a lista de mat4 finais (uma por osso) pronta
+para subir como uniform array no skinned.vert (uBoneMatrices[]).
 
 Não depende de pygame/OpenGL — só numpy. Pode ser testado isoladamente.
 """
@@ -18,15 +18,21 @@ from .math3d import identity
 # Mapeia os nomes de "intenção" do jogo para os nomes de clipe esperados
 # dentro do .glb (ajuste se os clipes saírem do Blender com outro nome).
 DEFAULT_CLIP_NAMES = {
-    "idle":     "Idle",
-    "walking":  "Walking",
-    "jumping":  "Jumping",
-    "punching": "Punching",
-    "reaction": "Reaction",
+    "idle":                "Idle",
+    "walking":             "Walking",
+    "jumping":             "Jumping",
+    "punching":            "Punching",
+    "reaction":            "Reaction",
+    "beatrice":            "Beatrice",            # minya / emt / shamac
+    "invisibleprovidence": "InvisibleProvidence",  # invisible providence
+    "item":                "Item",                 # uso de item (cura HP ou MP)
 }
 
 # Estados que tocam uma vez e voltam para idle sozinhos ao terminar
-ONE_SHOT_STATES = {"punching", "reaction", "jumping"}
+ONE_SHOT_STATES = {
+    "punching", "reaction", "jumping",
+    "beatrice", "invisibleprovidence", "item",
+}
 
 BLEND_TIME = 0.15  # segundos de crossfade ao trocar de estado
 
@@ -79,8 +85,11 @@ class AnimationController:
 
     Trocar de estado (chamado nos eventos do jogo):
         anim_controller.play("walking")
-        anim_controller.play("punching")   # one-shot, volta a idle/walking sozinho
-        anim_controller.play("reaction")   # one-shot
+        anim_controller.play("punching")            # one-shot, volta a idle/walking sozinho
+        anim_controller.play("reaction")             # one-shot
+        anim_controller.play("beatrice")             # one-shot (minya / emt / shamac)
+        anim_controller.play("invisibleprovidence")  # one-shot
+        anim_controller.play("item")                 # one-shot (cura HP ou MP)
     """
 
     def __init__(self, bones: list, clips: dict, clip_names: dict = None,
@@ -130,15 +139,22 @@ class AnimationController:
         if clip and self.state in ONE_SHOT_STATES and self.time >= clip.duration:
             # one-shot terminou -> volta a idle (ou walking se ainda andando;
             # main.py decide isso chamando play("walking")/"idle" logo após
-            # o reaction/punching acabarem — ver _update_player_animation)
+            # o one-shot acabar — ver _update_player_animation)
             self.play("idle")
 
     def is_playing(self, state_name: str) -> bool:
         return self.state == state_name
 
+    def is_one_shot_active(self) -> bool:
+        """True se o estado atual é um one-shot (punching/reaction/jumping/
+        beatrice/invisibleprovidence/item) e ainda não terminou seu clipe.
+        Usado por main.py pra saber se pode trocar livremente pra idle/walking
+        ou se precisa esperar a animação atual acabar."""
+        return self.state in ONE_SHOT_STATES and not self.finished_one_shot()
+
     def finished_one_shot(self) -> bool:
-        """True no frame em que um estado one-shot (punching/reaction) acabou
-        de completar seu clipe. Útil pra main.py decidir o próximo estado."""
+        """True no frame em que um estado one-shot acabou de completar
+        seu clipe. Útil pra main.py decidir o próximo estado."""
         clip = self._clip_for(self.state)
         return (self.state in ONE_SHOT_STATES and clip is not None
                 and self.time >= clip.duration)

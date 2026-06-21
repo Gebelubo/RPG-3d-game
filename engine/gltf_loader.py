@@ -1,18 +1,3 @@
-"""
-gltf_loader.py  –  Leitor de .glb para meshes com esqueleto (skinning).
-
-Não mexe em nada do pipeline .obj existente (obj_loader.py / mesh.py
-continuam intactos). Este loader é usado SOMENTE pelo SkinnedMesh.
-
-Retorna um SkinnedMeshData por mesh primitive do arquivo, contendo:
-  - vértices (pos, normal, uv) já em Y-up (mesma convenção do resto do engine)
-  - joints/weights por vértice (4 influências, igual ao padrão glTF JOINTS_0/WEIGHTS_0)
-  - o esqueleto (lista de ossos, parent index, inverse bind matrix, local bind transform)
-  - os clipes de animação (translation/rotation/scale por osso, amostrados em keyframes)
-
-Dependência externa: pygltflib (ver requirements.txt).
-"""
-
 import os
 import numpy as np
 from dataclasses import dataclass, field
@@ -22,72 +7,56 @@ import pygltflib
 from pygltflib import GLTF2
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Estruturas de dados
-# ─────────────────────────────────────────────────────────────────────────────
-
 @dataclass
 class Bone:
     name:               str
-    parent_index:       int                # -1 = raiz
-    inverse_bind_matrix: np.ndarray         # (4,4) float32 — espaço-osso <- espaço-mesh
-    local_bind_translation: np.ndarray      # (3,) — TRS do bind pose (espaço do pai)
-    local_bind_rotation:    np.ndarray      # (4,) quaternion xyzw
-    local_bind_scale:       np.ndarray      # (3,)
+    parent_index:       int
+    inverse_bind_matrix: np.ndarray
+    local_bind_translation: np.ndarray
+    local_bind_rotation:    np.ndarray
+    local_bind_scale:       np.ndarray
 
 
 @dataclass
 class BoneKeyframes:
-    """Curvas de animação de UM osso (amostras já alinhadas em 'times')."""
-    times:        np.ndarray   # (K,) segundos
-    translations: np.ndarray   # (K,3)
-    rotations:    np.ndarray   # (K,4) quaternion xyzw
-    scales:       np.ndarray   # (K,3)
+    times:        np.ndarray
+    translations: np.ndarray
+    rotations:    np.ndarray
+    scales:       np.ndarray
 
 
 @dataclass
 class AnimationClip:
     name:      str
     duration:  float
-    # uma entrada por índice de osso (mesma ordem de SkinnedMeshData.bones);
-    # None se aquele osso não é animado neste clipe (mantém o bind pose)
-    bone_tracks: list  # list[Optional[BoneKeyframes]]
+    bone_tracks: list
 
 
 @dataclass
 class SkinnedMeshData:
     name:            str
-    vertices:        np.ndarray   # (N, 8)  [x,y,z, nx,ny,nz, u,v]  — igual ao Mesh estático
-    indices:         np.ndarray   # (M,) uint32
-    joints:          np.ndarray   # (N, 4) uint16 — índice do osso (até 4 influências)
-    weights:         np.ndarray   # (N, 4) float32 — pesos normalizados (somam ~1.0)
-    bones:           list         # list[Bone], ordem = bone index usado em 'joints'
-    clips:           dict         # dict[str, AnimationClip]
+    vertices:        np.ndarray
+    indices:         np.ndarray
+    joints:          np.ndarray
+    weights:         np.ndarray
+    bones:           list
+    clips:           dict
     texture_path:    Optional[str] = None
     base_color:      tuple = (0.8, 0.8, 0.8)
     root_transform:  Optional[np.ndarray] = None
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Loader
-# ─────────────────────────────────────────────────────────────────────────────
-
 class GLTFLoader:
-    """
-    Carrega um único .glb e retorna list[SkinnedMeshData] (uma entrada por
-    mesh primitive). Assume export do assimp com 1 skin compartilhada entre
-    as primitivas (caso comum para um personagem único como o Subaru).
-    """
+    def __init__(self):
+        self.last_primitives: list = []
 
     def _compute_root_transform(self, gltf, joint_node_indices, bones=None) -> Optional[np.ndarray]:
         joint_set = set(joint_node_indices)
-
         parent_of = {}
         for idx, node in enumerate(gltf.nodes):
             if node.children:
                 for child_idx in node.children:
                     parent_of[child_idx] = idx
-
         skeleton_root = None
         for node_idx in joint_node_indices:
             p = parent_of.get(node_idx)
@@ -96,13 +65,11 @@ class GLTFLoader:
                 break
         if skeleton_root is None:
             return None
-
         chain = []
         cur = parent_of.get(skeleton_root)
         while cur is not None:
             chain.append(cur)
             cur = parent_of.get(cur)
-
         m = np.eye(4, dtype=np.float32)
         if chain:
             for node_idx in reversed(chain):
@@ -113,10 +80,8 @@ class GLTFLoader:
                 node_m[:3, :3] = rot3 * s[np.newaxis, :]
                 node_m[:3, 3] = t
                 m = m @ node_m
-
         if not np.allclose(m, np.eye(4, dtype=np.float32)):
             return m
-
         if bones:
             try:
                 root_bone_idx = joint_node_indices.index(skeleton_root)
@@ -132,6 +97,20 @@ class GLTFLoader:
                 if np.linalg.det(skin_m[:3, :3]) != 0 and not np.allclose(skin_m, np.eye(4, dtype=np.float32), atol=1e-3):
                     derived = np.linalg.inv(skin_m).astype(np.float32)
                     if not np.allclose(derived, np.eye(4, dtype=np.float32)):
+                        # Esta normalização (manter só a rotação de 'derived' e
+                        # zerar a escala) é exclusiva do asset da Beatrice — é o
+                        # que cancela corretamente o inverso do /100 aplicado em
+                        # _build_bones para ESSE asset especificamente. Para os
+                        # demais assets (ex.: Subaru), 'derived' já vem correto
+                        # do jeito que o código original (pré-correção Beatrice)
+                        # calculava, então não tocamos nele.
+                        if getattr(self, '_is_beatrice', False):
+                            rot_only = derived[:3, :3].copy()
+                            col_norms = np.linalg.norm(rot_only, axis=0)
+                            col_norms = np.where(col_norms < 1e-8, 1.0, col_norms)
+                            rot_only = rot_only / col_norms[np.newaxis, :]
+                            derived = np.eye(4, dtype=np.float32)
+                            derived[:3, :3] = rot_only
                         zup_to_yup = np.array([
                             [1, 0, 0, 0],
                             [0, 0, 1, 0],
@@ -139,7 +118,6 @@ class GLTFLoader:
                             [0, 0, 0, 1],
                         ], dtype=np.float32)
                         return zup_to_yup @ derived
-
         return None
 
     @staticmethod
@@ -154,150 +132,69 @@ class GLTFLoader:
             [2 * (xz - wy),     2 * (yz + wx),     1 - 2 * (xx + yy)],
         ], dtype=np.float32)
 
-    def load(self, path: str) -> list:
+    def load_merged(self, path: str) -> Optional['SkinnedMeshData']:
         gltf = GLTF2().load(path)
         base_dir = os.path.dirname(os.path.abspath(path))
-
         if not gltf.skins:
             raise ValueError(f"{path}: nenhum skin encontrado (.glb sem esqueleto)")
-
         skin = gltf.skins[0]
         joint_node_indices = list(skin.joints)
         node_to_bone = {n: i for i, n in enumerate(joint_node_indices)}
 
-        bones = self._build_bones(gltf, skin, joint_node_indices, node_to_bone)
-        clips = self._build_clips(gltf, node_to_bone, len(bones))
-        root_transform = self._compute_root_transform(gltf, joint_node_indices, bones=bones)
+        # Identifica se este asset é o da Beatrice (pelo nome do arquivo) para
+        # decidir qual fluxo de correção de unidade usar:
+        #  - Beatrice: detecção automática cm->m via heurística na escala da
+        #    inverse bind matrix (necessária porque o export da Beatrice tem
+        #    comportamento diferente do Subaru).
+        #  - Qualquer outro asset (ex.: Subaru): mantém o comportamento
+        #    histórico/original — sempre assume centímetros e aplica /100,
+        #    sem essa heurística, porque é isso que funciona pra ele.
+        self._is_beatrice = "beatrice" in os.path.basename(path).lower()
 
-        results = []
+        if self._is_beatrice:
+            # Detecta uma única vez se este asset foi exportado em centímetros
+            # (Mixamo/FBX, comum) ou já em metros (ex.: export direto do
+            # Blender). Usado tanto pelo bind pose (_build_bones) quanto pelas
+            # curvas de animação (_merge_tracks) — as duas precisam concordar,
+            # senão o bind pose fica em metros mas a animação "puxa" os bones
+            # de volta para a escala cm a cada frame (ou vice-versa). Ver
+            # _build_bones para detalhes da heurística.
+            ibm_accessor = skin.inverseBindMatrices
+            ibm_probe = self._read_accessor(gltf, ibm_accessor).reshape(-1, 4, 4)
+            first_ibm_scale = float(np.linalg.norm(ibm_probe[0].T[:3, 0])) if len(ibm_probe) else 1.0
+            self._needs_cm_to_m = first_ibm_scale > 10.0  # ~100 para cm; ~1 para m já correto
+        else:
+            self._needs_cm_to_m = True  # comportamento original: sempre cm->m
+
+        bones = self._build_bones(gltf, skin, joint_node_indices, node_to_bone)
+        clips = self._build_clips(gltf, node_to_bone, bones)
+        root_transform = self._compute_root_transform(gltf, joint_node_indices, bones=bones)
+        primitives = []
         for node in gltf.nodes:
             if node.mesh is None:
                 continue
             mesh = gltf.meshes[node.mesh]
             for prim in mesh.primitives:
                 smd = self._build_primitive(gltf, prim, base_dir, bones, clips, mesh.name or "skinned")
-                if smd is not None:
-                    smd.root_transform = root_transform
-                    results.append(smd)
-        return results
-
-    def load_merged(self, path: str) -> Optional['SkinnedMeshData']:
-        gltf = GLTF2().load(path)
-        base_dir = os.path.dirname(os.path.abspath(path))
-
-        if not gltf.skins:
-            raise ValueError(f"{path}: nenhum skin encontrado (.glb sem esqueleto)")
-
-        skin = gltf.skins[0]
-        joint_node_indices = list(skin.joints)
-        node_to_bone = {n: i for i, n in enumerate(joint_node_indices)}
-
-        bones = self._build_bones(gltf, skin, joint_node_indices, node_to_bone)
-        clips = self._build_clips(gltf, node_to_bone, len(bones))
-        root_transform = self._compute_root_transform(gltf, joint_node_indices, bones=bones)
-
-        all_vertices = []
-        all_indices  = []
-        all_joints   = []
-        all_weights  = []
-        texture_path = None
-        vertex_offset = 0
-
-        for node in gltf.nodes:
-            if node.mesh is None:
-                continue
-            mesh = gltf.meshes[node.mesh]
-            for prim in mesh.primitives:
-                smd = self._build_primitive(gltf, prim, base_dir, bones, clips,
-                                            mesh.name or "skinned")
                 if smd is None:
                     continue
-                
-                # ATENÇÃO: Se as texturas continuarem estranhas após arrumar o skinned_mesh.py,
-                # comente a linha abaixo colocando um # na frente dela para testar:
-                self._fix_mirrored_uvs(smd.vertices)
-                
-                all_vertices.append(smd.vertices)
-                all_indices.append(smd.indices + vertex_offset)
-                all_joints.append(smd.joints)
-                all_weights.append(smd.weights)
-                vertex_offset += len(smd.vertices)
-                if texture_path is None and smd.texture_path:
-                    texture_path = smd.texture_path
-
-        if not all_vertices:
+                smd.root_transform = root_transform
+                primitives.append(smd)
+        if not primitives:
+            self.last_primitives = []
             return None
-
-        return SkinnedMeshData(
-            name="merged",
-            vertices=np.concatenate(all_vertices, axis=0),
-            indices=np.concatenate(all_indices, axis=0).astype(np.uint32),
-            joints=np.concatenate(all_joints, axis=0).astype(np.uint16),
-            weights=np.concatenate(all_weights, axis=0).astype(np.float32),
-            bones=bones,
-            clips=clips,
-            texture_path=texture_path,
-            root_transform=root_transform,
-        )
-
-    @staticmethod
-    def _zup_to_yup_translation(v: np.ndarray) -> np.ndarray:
-        return np.array([v[0], -v[2], v[1]], dtype=np.float32)
-
-    @staticmethod
-    def _zup_to_yup_quat(q: np.ndarray) -> np.ndarray:
-        cx, cy, cz, cw = 0.7071068, 0.0, 0.0, 0.7071068
-        qx, qy, qz, qw = q[0], q[1], q[2], q[3]
-        rx = cw*qx + cx*qw + cy*qz - cz*qy
-        ry = cw*qy - cx*qz + cy*qw + cz*qx
-        rz = cw*qz + cx*qy - cy*qx + cz*qw
-        rw = cw*qw - cx*qx - cy*qy - cz*qz
-        result = np.array([rx, ry, rz, rw], dtype=np.float32)
-        n = np.linalg.norm(result)
-        return result / n if n > 1e-8 else result
-
-    def _convert_clips_zup_to_yup(self, clips: dict):
-        for clip in clips.values():
-            for track in clip.bone_tracks:
-                if track is None:
-                    continue
-                t = track.translations
-                y_orig = t[:, 1].copy()
-                t[:, 1] = -t[:, 2]
-                t[:, 2] = y_orig
-                for i in range(len(track.rotations)):
-                    track.rotations[i] = self._zup_to_yup_quat(track.rotations[i])
-
-    @staticmethod
-    def _fix_mirrored_uvs(verts: np.ndarray):
-        u = verts[:, 6].copy()
-        mask_high = u > 1.0
-        u[mask_high] = 2.0 - u[mask_high]
-        mask_neg = u < 0.0
-        u[mask_neg] = -u[mask_neg]
-        verts[:, 6] = np.clip(u, 0.0, 1.0)
-        verts[:, 7] = np.clip(verts[:, 7], 0.0, 1.0)
-
-    def _convert_verts_zup_to_yup(self, verts: np.ndarray):
-        x, y, z = verts[:, 0].copy(), verts[:, 1].copy(), verts[:, 2].copy()
-        verts[:, 0] = x; verts[:, 1] = z; verts[:, 2] = -y
-        nx, ny, nz = verts[:, 3].copy(), verts[:, 4].copy(), verts[:, 5].copy()
-        verts[:, 3] = nx; verts[:, 4] = nz; verts[:, 5] = -ny
-
-    def _convert_bones_zup_to_yup(self, bones: list):
-        pass
+        self.last_primitives = primitives
+        return primitives[0]
 
     def _build_bones(self, gltf, skin, joint_node_indices, node_to_bone) -> list:
         ibm_accessor = skin.inverseBindMatrices
         ibm_data = self._read_accessor(gltf, ibm_accessor)
         ibm_data = ibm_data.reshape(-1, 4, 4)
-
         parent_of_node = {}
         for idx, n in enumerate(gltf.nodes):
             if n.children:
                 for child_idx in n.children:
                     parent_of_node[child_idx] = idx
-
         joint_set = set(joint_node_indices)
 
         def find_joint_parent(node_idx: int) -> int:
@@ -320,12 +217,34 @@ class GLTFLoader:
             return m
 
         bones = []
+        # needs_cm_to_m já foi calculado uma vez em load_merged() (mesma
+        # decisão usada pelas curvas de animação em _merge_tracks, para que
+        # bind pose e animação fiquem na mesma unidade). Fallback para True
+        # (comportamento histórico) se chamado fora do fluxo de load_merged.
+        needs_cm_to_m = getattr(self, '_needs_cm_to_m', True)
+
         for bone_idx, node_idx in enumerate(joint_node_indices):
             node = gltf.nodes[node_idx]
             parent_index = find_joint_parent(node_idx)
             bind_m = local_bind_matrix(node_idx)
             t, r, s = self._mat4_to_trs(bind_m)
             ibm = ibm_data[bone_idx].T.astype(np.float32)
+
+            # CORREÇÃO: alguns exportadores (Mixamo/FBX) gravam o bind pose
+            # em centímetros, então tanto a translação do bind local quanto a
+            # inverse bind matrix (rotação+escala+translação, linhas 0-2)
+            # carregam um fator de escala 100 embutido. Se só um dos dois
+            # for normalizado, esse fator não se cancela na cadeia
+            # global_transform @ inverse_bind_matrix, e ossos no fim de
+            # cadeias longas (ex.: Hips->Spine->Spine1->Spine2->Neck->Head)
+            # ficam com escala/posição ~100x erradas mesmo com pesos de
+            # skinning corretos. Aplicada apenas quando needs_cm_to_m
+            # detecta essa unidade (ver load_merged) — assets já em metros
+            # (ex.: exports diretos do Blender) NÃO devem passar por isso,
+            # ou o modelo inteiro fica esmagado para ~1% do tamanho correto.
+            if needs_cm_to_m:
+                t = t / 100.0
+                ibm[:3, :] = ibm[:3, :] / 100.0
 
             bones.append(Bone(
                 name=node.name or f"bone_{bone_idx}",
@@ -395,12 +314,12 @@ class GLTFLoader:
             qz = 0.25 * S
         return np.array([qx, qy, qz, qw], dtype=np.float32)
 
-    def _build_clips(self, gltf, node_to_bone: dict, n_bones: int) -> dict:
+    def _build_clips(self, gltf, node_to_bone: dict, bones: list) -> dict:
+        n_bones = len(bones)
         clips = {}
         for anim in (gltf.animations or []):
             bone_tracks = [None] * n_bones
             duration = 0.0
-
             per_bone = {}
             for ch in anim.channels:
                 target_node = ch.target.node
@@ -412,10 +331,8 @@ class GLTFLoader:
                 values = self._read_accessor(gltf, sampler.output)
                 duration = max(duration, float(times[-1]) if len(times) else 0.0)
                 per_bone.setdefault(bone_idx, {})[ch.target.path] = (times, values)
-
             for bone_idx, paths in per_bone.items():
-                bone_tracks[bone_idx] = self._merge_tracks(paths)
-
+                bone_tracks[bone_idx] = self._merge_tracks(paths, bones[bone_idx])
             clips[anim.name or f"clip_{len(clips)}"] = AnimationClip(
                 name=anim.name or f"clip_{len(clips)}",
                 duration=duration,
@@ -423,17 +340,50 @@ class GLTFLoader:
             )
         return clips
 
-    def _merge_tracks(self, paths: dict) -> BoneKeyframes:
+    def _merge_tracks(self, paths: dict, bone: 'Bone') -> BoneKeyframes:
         all_times = sorted(set(
             t for key in ("translation", "rotation", "scale") if key in paths
             for t in paths[key][0].tolist()
         ))
         all_times = np.array(all_times, dtype=np.float32) if all_times else np.array([0.0], dtype=np.float32)
-
-        translations = self._resample(paths.get("translation"), all_times, default=np.array([0, 0, 0], dtype=np.float32))
-        rotations    = self._resample(paths.get("rotation"),    all_times, default=np.array([0, 0, 0, 1], dtype=np.float32), is_quat=True)
-        scales       = self._resample(paths.get("scale"),       all_times, default=np.array([1, 1, 1], dtype=np.float32))
-
+        # IMPORTANTE: quando um canal (translation/rotation/scale) não existe
+        # para este bone neste clipe — comum em exports que só gravam
+        # rotation para bones de uma cadeia (ex.: spine_01..head) — o valor
+        # default usado precisa ser o BIND LOCAL do bone, não um valor fixo
+        # neutro (0 translação / escala 1). _sample_locals usa a translação
+        # amostrada como transform local ABSOLUTO (substitui o bind, não soma
+        # a ele), então um default [0,0,0] colapsaria esses bones na origem
+        # do seu espaço de pai — colando spine_01..head todos na posição do
+        # bone anterior na cadeia e "achatando" o personagem.
+        # IMPORTANTE (Beatrice apenas): quando um canal (translation/rotation/
+        # scale) não existe para este bone neste clipe — comum em exports que
+        # só gravam rotation para bones de uma cadeia (ex.: spine_01..head) —
+        # o valor default usado precisa ser o BIND LOCAL do bone, não um valor
+        # fixo neutro (0 translação / escala 1). _sample_locals usa a
+        # translação amostrada como transform local ABSOLUTO (substitui o
+        # bind, não soma a ele), então um default [0,0,0] colapsaria esses
+        # bones na origem do seu espaço de pai. Isso é necessário pro export
+        # da Beatrice; o Subaru mantém os defaults neutros originais, que é o
+        # que funciona pra ele.
+        if getattr(self, '_is_beatrice', False):
+            default_t = bone.local_bind_translation
+            default_r = bone.local_bind_rotation
+            default_s = bone.local_bind_scale
+        else:
+            default_t = np.array([0, 0, 0], dtype=np.float32)
+            default_r = np.array([0, 0, 0, 1], dtype=np.float32)
+            default_s = np.array([1, 1, 1], dtype=np.float32)
+        translations = self._resample(paths.get("translation"), all_times, default=default_t)
+        rotations    = self._resample(paths.get("rotation"),    all_times, default=default_r, is_quat=True)
+        # CORREÇÃO TAMBÉM AQUI: quando o asset usa centímetros (ver
+        # load_merged / _build_bones), as curvas de translation das
+        # animações também vêm em centímetros e precisam do mesmo /100 —
+        # senão a animação "puxaria" os bones de volta pra escala cm a cada
+        # frame. Usa a mesma decisão needs_cm_to_m do bind pose (consistência
+        # obrigatória entre os dois); assets já em metros não passam por isso.
+        if "translation" in paths and getattr(self, '_needs_cm_to_m', True):
+            translations = translations / 100.0
+        scales       = self._resample(paths.get("scale"),       all_times, default=default_s)
         return BoneKeyframes(times=all_times, translations=translations,
                               rotations=rotations, scales=scales)
 
@@ -476,22 +426,46 @@ class GLTFLoader:
         attrs = prim.attributes
         if attrs.POSITION is None or attrs.JOINTS_0 is None or attrs.WEIGHTS_0 is None:
             return None
-
         positions = self._read_accessor(gltf, attrs.POSITION)
         normals   = self._read_accessor(gltf, attrs.NORMAL) if attrs.NORMAL is not None else np.zeros_like(positions)
         uvs       = self._read_accessor(gltf, attrs.TEXCOORD_0) if attrs.TEXCOORD_0 is not None else np.zeros((len(positions), 2), dtype=np.float32)
+        uvs       = uvs.copy()
+        uvs[:, 0] = np.mod(uvs[:, 0], 1.0)
+        uvs[:, 1] = 1.0 - np.mod(uvs[:, 1], 1.0)
         joints    = self._read_accessor(gltf, attrs.JOINTS_0).astype(np.uint16)
         weights   = self._read_accessor(gltf, attrs.WEIGHTS_0).astype(np.float32)
-        indices   = self._read_accessor(gltf, prim.indices).astype(np.uint32).reshape(-1)
-
+        if prim.indices is None:
+            # Primitive não-indexada (válido no glTF: ausência de "indices"
+            # significa desenhar os vértices em sequência). Gera um índice
+            # sequencial sintético para manter a mesma SkinnedMeshData.indices
+            # que o resto do pipeline (skinning, draw) espera.
+            mode = prim.mode if prim.mode is not None else 4  # default glTF = TRIANGLES
+            n_verts = len(positions)
+            if mode == 4:  # TRIANGLES
+                indices = np.arange(n_verts, dtype=np.uint32)
+            elif mode == 5:  # TRIANGLE_STRIP -> expande para lista de triângulos
+                tris = []
+                for i in range(n_verts - 2):
+                    if i % 2 == 0:
+                        tris.extend([i, i + 1, i + 2])
+                    else:
+                        tris.extend([i + 1, i, i + 2])
+                indices = np.array(tris, dtype=np.uint32)
+            elif mode == 6:  # TRIANGLE_FAN -> expande para lista de triângulos
+                tris = []
+                for i in range(1, n_verts - 1):
+                    tris.extend([0, i, i + 1])
+                indices = np.array(tris, dtype=np.uint32)
+            else:
+                print(f"_build_primitive: primitive sem 'indices' e mode={mode} não suportado para expansão; pulando.")
+                return None
+        else:
+            indices = self._read_accessor(gltf, prim.indices).astype(np.uint32).reshape(-1)
         vertices = np.hstack([positions, normals, uvs]).astype(np.float32)
-
         wsum = weights.sum(axis=1, keepdims=True)
         wsum[wsum < 1e-8] = 1.0
         weights = weights / wsum
-
         texture_path = self._resolve_texture(gltf, prim, base_dir)
-
         return SkinnedMeshData(
             name=name, vertices=vertices, indices=indices,
             joints=joints, weights=weights,
@@ -534,22 +508,18 @@ class GLTFLoader:
         accessor = gltf.accessors[accessor_index]
         buffer_view = gltf.bufferViews[accessor.bufferView]
         blob = gltf.binary_blob()
-
         comp_type_map = {
             5120: np.int8, 5121: np.uint8,
             5122: np.int16, 5123: np.uint16,
             5125: np.uint32, 5126: np.float32,
         }
         n_comp_map = {"SCALAR": 1, "VEC2": 2, "VEC3": 3, "VEC4": 4, "MAT4": 16}
-
         dtype = comp_type_map[accessor.componentType]
         n_comp = n_comp_map[accessor.type]
         item_size = np.dtype(dtype).itemsize * n_comp
-
         base_offset = (buffer_view.byteOffset or 0) + (accessor.byteOffset or 0)
         count = accessor.count
         stride = buffer_view.byteStride or item_size
-
         if stride == item_size:
             arr = np.frombuffer(blob, dtype=dtype, count=count * n_comp, offset=base_offset)
             arr = arr.reshape(count, n_comp) if n_comp > 1 else arr.reshape(count)
@@ -560,10 +530,8 @@ class GLTFLoader:
                 arr[i] = np.frombuffer(blob, dtype=dtype, count=n_comp, offset=off)
             if n_comp == 1:
                 arr = arr.reshape(count)
-
         if accessor.normalized and dtype == np.uint16:
             arr = arr.astype(np.float32) / 65535.0
         elif accessor.normalized and dtype == np.uint8:
             arr = arr.astype(np.float32) / 255.0
-
         return arr.astype(np.float32) if dtype in (np.float32,) else arr
