@@ -95,11 +95,34 @@ def _stair_step_bounds(i):
 
 
 def _build_stairs(scene, floor_state):
+    """Escada sólida estilo castelo."""
+
     for i in range(STAIR_COUNT):
-        y_center = i * STAIR_STEP_H + STAIR_STEP_H / 2.0
+
+        # altura acumulada do degrau
+        height = (i + 1) * STAIR_STEP_H
+
         z_center = STAIR_Z_START - i * STAIR_Z_SPACING
-        sm = make_box_mesh(f"stair_{i}", STAIR_WIDTH, STAIR_STEP_H, STAIR_STEP_D, color=(0.50, 0.45, 0.40))
-        scene.add(SceneNode(f"stair_{i}", mesh=sm, position=(0, y_center, z_center)))
+
+        sm = make_box_mesh(
+            f"stair_{i}",
+            STAIR_WIDTH,
+            height,
+            STAIR_STEP_D,
+            color=(0.50, 0.45, 0.40),
+        )
+
+        tex = Texture(os.path.join(_HERE, "assets", "models", "tower", "darkwood.jpg"))
+
+        scene.add(
+            SceneNode(
+                f"stair_{i}",
+                mesh=sm,
+                texture = tex,
+                position=(0, height / 2.0, z_center)
+            )
+        )
+
     floor_state.has_stairs = True
 
 
@@ -133,29 +156,89 @@ def _add_tower_deco(scene, floor_state, name, position, scale=(1,1,1), rotation=
 
     if name == "obelisk":
         verts, idxs = make_cube(1.0)
-        mesh = ProceduralMesh("obelisk", verts, idxs, base_color=(0.25, 0.20, 0.35), ka=0.3, kd=0.7, ks=0.4, shininess=32)
-        node = SceneNode("obelisk", mesh=mesh, texture=Texture(f"{base_path}obsidian.png"),
-                         position=[x, y + 2.0*sy, z], scale=[0.4*sx, 4.0*sy, 0.4*sz])
+        mesh = ProceduralMesh("obelisk", verts, idxs,
+                              base_color=(0.25, 0.20, 0.35),
+                              ka=0.3, kd=0.7, ks=0.4, shininess=32)
+        # Caminho corrigido: assets/models/tower/obsidian.png
+        node_texture = Texture(f"{base_path}obsidian.png")
+        
+        node = SceneNode("obelisk", mesh=mesh, texture=node_texture,
+                         position=[x, y + 2.0 * sy, z],
+                         scale=[0.4 * sx, 4.0 * sy, 0.4 * sz])
+        
+        hb = CircleHitbox(x, y, z, collision_radius)
+        floor_state.obstacles.append(hb)
+
     elif name == "crystal":
         verts, idxs = make_sphere(0.5, 8, 8)
-        mesh = ProceduralMesh("crystal", verts, idxs, base_color=(0.15, 0.60, 0.55), ka=0.4, kd=0.6, ks=0.9, shininess=80)
-        node = SceneNode("crystal", mesh=mesh, texture=Texture(f"{base_path}rune_crystal.png"),
-                         position=[x, y + 0.6*sy, z], scale=[0.5*sx, 1.2*sy, 0.5*sz])
+        mesh = ProceduralMesh("crystal", verts, idxs,
+                              base_color=(0.15, 0.60, 0.55),
+                              ka=0.4, kd=0.6, ks=0.9, shininess=80)
+        
+        # Caminho corrigido: assets/models/tower/rune_crystal.png
+        node_texture = Texture(f"{base_path}rune_crystal.png")
+        
+        node = SceneNode("crystal", mesh=mesh, texture=node_texture,
+                         position=[x, y + 0.6 * sy, z],
+                         scale=[0.5 * sx, 1.2 * sy, 0.5 * sz])
+        floor_state.obstacles.append(CircleHitbox(x, y, z, collision_radius))
+
     elif name == "platform":
         verts, idxs = make_cube(1.0)
-        mesh = ProceduralMesh("platform", verts, idxs, base_color=(0.45, 0.40, 0.35), ka=0.3, kd=0.8, ks=0.2, shininess=12)
-        node = SceneNode("platform", mesh=mesh, texture=Texture(f"{base_path}tower_stone.png"),
-                         position=[x, y + 0.2*sy, z], scale=[2.5*sx, 0.4*sy, 2.5*sz])
+
+        mesh = ProceduralMesh(
+            "platform",
+            verts,
+            idxs,
+            base_color=(0.45, 0.40, 0.35),
+            ka=0.3,
+            kd=0.8,
+            ks=0.2,
+            shininess=12
+        )
+
+        node_texture = Texture(f"{base_path}tower_stone.png")
+
+        platform_w = 2.5 * sx
+        platform_d = 2.5 * sz
+
+        node = SceneNode(
+            "platform",
+            mesh=mesh,
+            texture=node_texture,
+            position=[x, y + 0.2 * sy, z],
+            scale=[platform_w, 0.4 * sy, platform_d]
+        )
+
+        scene.add(node)
+        floor_state.obstacles.append(
+            BoxHitbox(
+                x=x,
+                y=y,
+                z=z,
+                width=5 * sx,
+                height=1.2 * sy,
+                depth=5 * sz
+            )
+        )
+
     elif name == "tower":
         verts, idxs = make_cube(1.0)
-        mesh = ProceduralMesh("tower", verts, idxs, base_color=(0.30, 0.25, 0.40), ka=0.3, kd=0.7, ks=0.3, shininess=16)
-        node = SceneNode("tower", mesh=mesh, texture=Texture(f"{base_path}tower_stone.png"),
-                         position=[x, y + 3.0*sy, z], scale=[1.5*sx, 6.0*sy, 1.5*sz])
+        mesh = ProceduralMesh("tower", verts, idxs,
+                              base_color=(0.30, 0.25, 0.40),
+                              ka=0.3, kd=0.7, ks=0.3, shininess=16)
+        
+        # Caminho corrigido: assets/models/tower/tower_stone.png
+        node_texture = Texture(f"{base_path}tower_stone.png")
+        
+        node = SceneNode("tower", mesh=mesh, texture=node_texture,
+                         position=[x, y + 3.0 * sy, z],
+                         scale=[1.5 * sx, 6.0 * sy, 1.5 * sz])
+        floor_state.obstacles.append(CircleHitbox(x, y, z, collision_radius))
     else:
         return None
 
     scene.add(node)
-    floor_state.obstacles.append((x, z, collision_radius))
     return node
 
 
@@ -373,14 +456,17 @@ def _load_skinned_beatrice(position=(0, 0, 0), rotation=(0, 180, 0)):
 
 def _spawn_heartless(scene, pos, scale=(0.012,0.012,0.012), level=2, stationary=False, flying=False):
     if flying:
-        model_path  = os.path.join(_HERE, "assets", "models", "AerialKnocker", "AerialKnocker.obj")
-        model_scale = (scale[0]*0.8, scale[1]*0.8, scale[2]*0.8)
+        model_path = os.path.join(_HERE, "assets", "models", "AerialKnocker", "AerialKnocker.obj")
+        model_scale = (scale[0] * 0.8, scale[1] * 0.8, scale[2] * 0.8)  # ajuste fino se necessário
+        rotation = (0, 180, 0)
     else:
         model_path  = os.path.join(_HERE, "assets", "models", "Heartless", "Heartless.obj")
         model_scale = scale
-        pos = (pos[0], pos[1] - 0.5, pos[2])
+        pos = (pos[0], pos[1] - 0.5, pos[2])  # ajuste para alinhar com o chão
+        rotation = (180, 0, 0)
 
-    node = _load_obj_model(model_path, position=pos, rotation=(180,0,0), scale=model_scale)
+    node = _load_obj_model(model_path, position=pos, rotation=rotation, scale=model_scale)
+
     if node is None:
         ev, ei = make_sphere(0.45, 10, 10)
         color  = (0.3, 0.3, 0.9) if flying else (0.7, 0.1, 0.1)
@@ -430,22 +516,25 @@ def load_game(player):
 
 class FloorState:
     def __init__(self):
-        self.enemies        = []
-        self.barrier_active = False
-        self.barrier_node   = None
-        self.door_node      = None
-        self.stair_locked   = True
-        self.has_stairs     = False
-        self.puzzle_solved  = False
-        self.rhythm_done    = False
-        self.obstacles      = []
-        self.combat_wave    = 0
-        self.all_clear      = False
-        self.boss           = None
-        self.boss_node      = None
-        self.emilia_node    = None
-        self.gauntlet_waves = []
-        self.gauntlet_idx   = 0
+        self.enemies         = []   # lista de (Enemy, SceneNode)
+        self.barrier_active  = False
+        self.barrier_node    = None
+        self.door_node       = None
+        self.stair_locked    = True
+        self.has_stairs      = False
+        self.puzzle_solved   = False
+        self.rhythm_done     = False
+        # Lista de obstáculos decorativos: (cx, cz, raio) para colisão push-out
+        self.obstacles: list[Hitbox] = []
+        self.combat_wave     = 0    # qual onda de combate estamos
+        self.all_clear       = False
+        # Boss
+        self.boss            = None
+        self.boss_node       = None
+        self.emilia_node     = None
+        # Corredor final
+        self.gauntlet_waves  = []
+        self.gauntlet_idx    = 0
 
 
 class Game:
@@ -557,29 +646,168 @@ class Game:
         self.beatrice_node  = None
         self.beatrice_timer = 0.0
 
-    def _build_room(self, floor_color=(0.22,0.18,0.28), wall_color=(0.28,0.22,0.35), ceil_color=(0.15,0.12,0.20)):
-        pv, pi = make_plane(ROOM_W, ROOM_D, 4)
-        self.scene.add(SceneNode("floor", mesh=ProceduralMesh("floor", pv, pi, base_color=floor_color, ka=0.3, kd=0.7, ks=0.1, shininess=8),
-                                  texture=ProceduralTexture(128, color_a=(55,45,70), color_b=(40,33,55))))
-        self.scene.add(SceneNode("ceiling", mesh=ProceduralMesh("ceiling", pv, pi, base_color=ceil_color, ka=0.2, kd=0.6, ks=0.05, shininess=4),
-                                  position=(0, ROOM_H, 0), rotation=(180,0,0)))
-        pv2, pi2 = make_plane(ROOM_W, ROOM_H, 1)
-        for name, pos, rot in [
-            ("wall_n", (0, ROOM_H/2, -ROOM_D/2), (90,0,0)),
-            ("wall_s", (0, ROOM_H/2,  ROOM_D/2), (-90,180,0)),
-            ("wall_w", (-ROOM_W/2, ROOM_H/2, 0), (0,0,-90)),
-            ("wall_e", ( ROOM_W/2, ROOM_H/2, 0), (0,0, 90)),
-        ]:
-            self.scene.add(SceneNode(name, mesh=ProceduralMesh(name, pv2, pi2, base_color=wall_color, ka=0.25, kd=0.75, ks=0.1, shininess=8),
-                                      position=pos, rotation=rot))
+    def _build_room(
+        self,
+        floor_color=(0.22, 0.18, 0.28),
+        wall_color=(0.28, 0.22, 0.35),
+        ceil_color=(0.15, 0.12, 0.20)
+    ):
+        # Piso
+        pv, pi = make_plane(
+            ROOM_W,
+            ROOM_D,
+            20,
+            tile_u=ROOM_W / 2,
+            tile_v=ROOM_D / 2
+        )
 
-        self.scene.light.orbit     = False
-        self.scene.light.pos       = [0.0, ROOM_H - 1.5, 0.0]
+        floor_mesh = ProceduralMesh(
+            "floor",
+            pv,
+            pi,
+            base_color=floor_color,
+            ka=0.3,
+            kd=0.7,
+            ks=0.1,
+            shininess=8
+        )
+
+        floor_ceiling = Texture(os.path.join(_HERE, "assets", "models", "tower", "floor.jpeg"))
+
+        floor_tex = ProceduralTexture(
+            128,
+            color_a=(55, 45, 70),
+            color_b=(40, 33, 55)
+        )
+
+        self.scene.add(
+            SceneNode(
+                "floor",
+                mesh=floor_mesh,
+                texture=floor_ceiling,
+            )
+        )
+
+        # Teto
+        ceiling_mesh = ProceduralMesh(
+            "ceiling",
+            pv,
+            pi,
+            base_color=ceil_color,
+            ka=0.2,
+            kd=0.6,
+            ks=0.05,
+            shininess=4
+        )
+
+        self.scene.add(
+            SceneNode(
+                "ceiling",
+                mesh=ceiling_mesh,
+                texture=floor_ceiling,
+                position=(0, ROOM_H, 0),
+                rotation=(180, 0, 0)
+            )
+        )
+
+        # =========================
+        # Paredes Norte e Sul
+        # =========================
+
+        pv_ns, pi_ns = make_plane(
+            ROOM_W,
+            ROOM_H,
+            divs=10,
+            tile_u=2,
+            tile_v=2
+        )
+
+        wall_texture = Texture(os.path.join(_HERE, "assets", "models", "tower", "stone_bricks.jpg"))
+
+        for name, pos, rot in [
+            ("wall_n", (0, ROOM_H / 2, -ROOM_D / 2), (90, 0, 0)),
+            ("wall_s", (0, ROOM_H / 2,  ROOM_D / 2), (-90, 180, 0)),
+        ]:
+            wm = ProceduralMesh(
+                name,
+                pv_ns,
+                pi_ns,
+                base_color=wall_color,
+                ka=0.25,
+                kd=0.75,
+                ks=0.1,
+                shininess=8
+            )
+
+            self.scene.add(
+                SceneNode(
+                    name,
+                    mesh=wm,
+                    texture=wall_texture,
+                    position=pos,
+                    rotation=rot
+                )
+            )
+
+        # =========================
+        # Paredes Leste e Oeste
+        # =========================
+
+        pv_ew, pi_ew = make_plane(ROOM_D, ROOM_H, divs=10, tile_u=2, tile_v=2)
+
+        for name, pos, rot in [
+            ("wall_w", (-ROOM_W / 2, ROOM_H / 2, 0), (90, 90, 0)),
+            ("wall_e", ( ROOM_W / 2, ROOM_H / 2, 0), (90,-90, 0)),
+        ]:
+            wm = ProceduralMesh(
+                name,
+                pv_ew,
+                pi_ew,
+                base_color=wall_color,
+                ka=0.25,
+                kd=0.75,
+                ks=0.1,
+                shininess=8
+            )
+
+            self.scene.add(
+                SceneNode(
+                    name,
+                    mesh=wm,
+                    position=pos,
+                    texture=wall_texture,
+                    rotation=rot
+                )
+            )
+
+        # Luz
+        self.scene.light.orbit = False
+        self.scene.light.pos = [0.0, ROOM_H - 1.5, 0.0]
         self.scene.light.intensity = 1.2
-        self.scene.light.color     = np.array([0.8,0.6,1.0], dtype=np.float32)
+        self.scene.light.color = np.array(
+            [0.8, 0.6, 1.0],
+            dtype=np.float32
+        )
+
         lv, li = make_sphere(0.18, 8, 8)
-        self.light_node = SceneNode("light_vis", mesh=ProceduralMesh("light_ball", lv, li, base_color=(1.0,0.9,0.5), ka=1.0, kd=0.0, ks=0.0, shininess=1),
-                                    position=[0.0, ROOM_H-1.5, 0.0])
+
+        lm = ProceduralMesh(
+            "light_ball",
+            lv,
+            li,
+            base_color=(1.0, 0.9, 0.5),
+            ka=1.0,
+            kd=0.0,
+            ks=0.0,
+            shininess=1
+        )
+
+        self.light_node = SceneNode(
+            "light_vis",
+            mesh=lm,
+            position=[0.0, ROOM_H - 1.5, 0.0]
+        )
+
         self.scene.add(self.light_node)
 
     def _place_player(self, pos=(0,0,10)):
@@ -655,29 +883,47 @@ class Game:
 
     def _build_floor_entry(self):
         self._build_room(floor_color=(0.12,0.10,0.18), wall_color=(0.18,0.14,0.26))
-        self._place_player(pos=(0,0,12))
+        self._place_player(pos=(0,2,12))
 
-        dm = make_box_mesh("door", 3.0, 4.0, 0.3, color=(0.35,0.22,0.10), ka=0.2, kd=0.7, ks=0.3, shin=24)
-        door_node = SceneNode("door", mesh=dm, position=(0, 4.0, -15))
+        # Porta no fundo do corredor (Norte, Z=-13)
+        dv, di = make_cube(1.0)
+        dm = make_box_mesh("door",3.0,4.0,0.3, color=(0.35,0.22,0.10), ka=0.2,kd=0.7,ks=0.3,shin=24)
+
+        door_tex = Texture(os.path.join(_HERE, "assets", "models", "tower", "doorwood.jpeg"))
+
+        door_node = SceneNode("door", mesh=dm, position=(0, 4.0,-15), scale=(1,1,1), texture=door_tex)
         self.scene.add(door_node)
         self.floor_state.door_node = door_node
 
-        bm = make_box_mesh("barrier", ROOM_W-2, ROOM_H-1, 0.2, color=(0.2,0.1,0.8))
-        barrier_node = SceneNode("barrier", mesh=bm, position=(0, ROOM_H/2-0.5, -9.0))
+
+        # Barreira mágica (inicialmente invisível até abrir a porta)
+        bv, bi = make_cube(1.0)
+        bm = make_box_mesh("barrier",ROOM_W-2,ROOM_H-1,0.2, color=(0.2,0.1,0.8))
+        barrier_node = SceneNode("barrier", mesh=bm, position=(0,ROOM_H/2-0.5,-9.0))
         barrier_node.visible = False
         self.scene.add(barrier_node)
         self.floor_state.barrier_node   = barrier_node
         self.floor_state.barrier_active = False
 
+
+        # Escada no fundo (atrás da barreira)
         _build_stairs(self.scene, self.floor_state)
         self.floor_state.stair_locked = True
 
+
+        # Decoração: obeliscos encostados nas paredes laterais (x=±8.5, fora da área de passagem)
         for sx in (-8.5, 8.5):
-            _add_tower_deco(self.scene, self.floor_state, "obelisk", position=(sx, 0.0, 0.0), scale=(1.5,1.5,1.5), collision_radius=1.2)
-        _add_tower_deco(self.scene, self.floor_state, "platform", position=(0.0, 0.0, 13.0), scale=(1.2,1.2,1.2), collision_radius=1.5)
+            _add_tower_deco(self.scene, self.floor_state, "obelisk",
+                            position=(sx, 0.0, 0.0), scale=(1.5, 1.5, 1.5),
+                            collision_radius=1.2)
+        # Plataforma decorativa encostada na parede sul (atrás do spawn do player)
+        _add_tower_deco(self.scene, self.floor_state, "platform",
+                        position=(0.0, 0.0, 13.0), scale=(1.2, 1.2, 1.2),
+                        collision_radius=1.5)
 
         self.hud.add_popup("Avance pelo corredor...", 3.0, (200,200,255))
         self.hud.add_popup("[E/Enter] perto da porta para abrir", 5.0, (180,200,255))
+
 
     def _build_floor_puzzle(self):
         self._build_room(floor_color=(0.18,0.16,0.28), wall_color=(0.26,0.20,0.38))
@@ -812,18 +1058,25 @@ class Game:
         self.scene.light.color         = np.array([1.0,0.5,1.0], dtype=np.float32)
         self.scene.light.intensity     = 1.5
 
-        emilia_node = _load_obj_model(os.path.join(_HERE,"assets","models","Emilia","Emilia.obj"),
-                                      position=(0,0.0,-12), rotation=(0,0,0), scale=(1.0,1.0,1.0))
+        # Emilia inconsciente ao fundo
+        emilia_node = _load_obj_model(
+            os.path.join(_HERE,"assets","models","Emilia","emilia.obj"),
+            position=(0,0.0,-12), rotation=(0,0,0), scale=(1.0,1.0,1.0)
+        )
         if emilia_node:
             self.scene.add(emilia_node)
         self.floor_state.emilia_node = emilia_node
 
-        bv, bi    = make_sphere(0.9, 16, 16)
-        bm        = ProceduralMesh("marluxia", bv, bi, base_color=(0.7,0.1,0.8), ka=0.4, kd=0.7, ks=0.8, shininess=96)
-        boss_node = SceneNode("marluxia", mesh=bm, position=(0,1.5,-8))
-        m_path    = os.path.join(_HERE,"assets","models","Marluxia","Marluxia.obj")
+        # Marluxia (boss) – representado por heartless maior e roxo
+        boss_hp = 400; boss_level = 8
+        bv, bi = make_sphere(0.9,16,16)
+        bm = ProceduralMesh("marluxia",bv,bi, base_color=(0.7,0.1,0.8),
+                            ka=0.4,kd=0.7,ks=0.8,shininess=96)
+        boss_node = SceneNode("marluxia", mesh=bm, position=(0,1.5,-8), rotation=(0,0,0), scale=(1.0,1.0,1.0))
+        # Tenta carregar modelo do Marluxia se existir
+        m_path = os.path.join(_HERE,"assets","models","Marluxia","Marluxia.obj")
         if os.path.exists(m_path):
-            loaded = _load_obj_model(m_path, position=(0,0,-8), rotation=(0,180,0), scale=(0.014,0.014,0.014))
+            loaded = _load_obj_model(m_path, position=(0,0,-8), rotation=(90,0,0), scale=(0.014,0.014,0.014))
             if loaded:
                 boss_node = loaded
 
@@ -1422,96 +1675,247 @@ class Game:
             px += dx*push; pz += dz*push
         p.world_pos[0] = px; p.world_pos[2] = pz
 
-    def _update_player(self, dt):
-        p    = self.player
-        keys = self.input.held_keys
-        if p.attack_cd > 0:    p.attack_cd   -= dt
-        if p.attack_timer > 0: p.attack_timer -= dt
-        else:                  p.is_attacking  = False
-        if p.combo_timer > 0:  p.combo_timer  -= dt
-        else:                  p.combo_count   = 0
-        if p.invincible > 0:   p.invincible   -= dt
-        if p.stats.shield_time > 0: p.stats.shield_time -= dt
-        if p.reaction_timer > 0:
-            p.reaction_timer -= dt
-            if p.reaction_timer <= 0: p.is_taking_damage = False
 
-        move_x, move_z = 0.0, 0.0
-        fwd = self.camera.flat_forward; rgt = self.camera.flat_right
-        if not p.is_rolling:
-            if "w" in keys: move_x+=fwd[0]; move_z+=fwd[2]
-            if "s" in keys: move_x-=fwd[0]; move_z-=fwd[2]
-            if "a" in keys: move_x-=rgt[0]; move_z-=rgt[2]
-            if "d" in keys: move_x+=rgt[0]; move_z+=rgt[2]
-            mag = math.sqrt(move_x*move_x + move_z*move_z)
-            if mag > 0:
-                move_x/=mag; move_z/=mag
-                p.facing_deg = math.degrees(math.atan2(move_x, move_z))
-            p.velocity[0] = move_x * p.WALK_SPEED
-            p.velocity[2] = move_z * p.WALK_SPEED
-            if "space" in keys and p.on_ground:
-                p.velocity[1] = p.JUMP_FORCE; p.on_ground = False
-            if self.input.key_pressed("lshift") and p.on_ground and mag > 0:
-                p.is_rolling = True; p.roll_timer = p.ROLL_TIME
-                p.roll_dir   = [move_x, move_z]; p.invincible = p.ROLL_TIME
+    def _update_player_timers(self, dt):
+
+        p = self.player
+
+        if p.attack_cd > 0:
+            p.attack_cd -= dt
+
+        if p.attack_timer > 0:
+            p.attack_timer -= dt
         else:
+            p.is_attacking = False
+
+        if p.combo_timer > 0:
+            p.combo_timer -= dt
+        else:
+            p.combo_count = 0
+
+        if p.invincible > 0:
+            p.invincible -= dt
+
+        if p.stats.shield_time > 0:
+            p.stats.shield_time -= dt
+
+    def _handle_player_jump(self):
+
+        p = self.player
+
+        if (
+            "space" in self.input.held_keys
+            and p.on_ground
+        ):
+            p.velocity[1] = p.JUMP_FORCE
+            p.on_ground = False
+
+
+    def _update_player_input(self, dt):
+
+        p = self.player
+        keys = self.input.held_keys
+
+        move_x = 0.0
+        move_z = 0.0
+
+        fwd = self.camera.flat_forward
+        rgt = self.camera.flat_right
+
+        if "w" in keys:
+            move_x += fwd[0]
+            move_z += fwd[2]
+
+        if "s" in keys:
+            move_x -= fwd[0]
+            move_z -= fwd[2]
+
+        if "a" in keys:
+            move_x -= rgt[0]
+            move_z -= rgt[2]
+
+        if "d" in keys:
+            move_x += rgt[0]
+            move_z += rgt[2]
+
+        mag = math.sqrt(move_x * move_x + move_z * move_z)
+
+        if mag > 0:
+            move_x /= mag
+            move_z /= mag
+
+            p.facing_deg = math.degrees(
+                math.atan2(move_x, move_z)
+            )
+
+        self.move_x = move_x
+        self.move_z = move_z
+        self.move_mag = mag
+
+    def _move_player_horizontal(self, dt):
+
+        p = self.player
+
+        if not p.is_rolling:
+
+            p.velocity[0] = self.move_x * p.WALK_SPEED
+            p.velocity[2] = self.move_z * p.WALK_SPEED
+
+            if (
+                self.input.key_pressed("lshift")
+                and p.on_ground
+                and self.move_mag > 0
+            ):
+                p.is_rolling = True
+                p.roll_timer = p.ROLL_TIME
+                p.roll_dir = [self.move_x, self.move_z]
+                p.invincible = p.ROLL_TIME
+
+        else:
+
             p.roll_timer -= dt
+
             p.velocity[0] = p.roll_dir[0] * p.ROLL_SPEED
             p.velocity[2] = p.roll_dir[1] * p.ROLL_SPEED
-            if p.roll_timer <= 0.0:
-                p.is_rolling = False; p.velocity[0] = p.velocity[2] = 0.0
+
+            if p.roll_timer <= 0:
+                p.is_rolling = False
 
         p.world_pos[0] += p.velocity[0] * dt
         p.world_pos[2] += p.velocity[2] * dt
-        self._resolve_stair_collisions(p)
 
-        ground_y = self._stair_ground_y(p.world_pos[0], p.world_pos[2])
-        if p.world_pos[1] > ground_y + 0.02: p.on_ground = False
-        if not p.on_ground: p.velocity[1] += p.GRAVITY * dt
+    def _calculate_ground_height(self, player):
+
+        ground_y = self._stair_ground_y(
+            player.world_pos[0],
+            player.world_pos[2]
+        )
+
+        for hitbox in self.floor_state.obstacles:
+
+            if isinstance(hitbox, BoxHitbox):
+
+                h = hitbox.get_surface_height(player)
+
+                if h is not None:
+                    ground_y = max(ground_y, h)
+        return ground_y
+
+    def _update_player_ground(self, dt):
+
+        p = self.player
+
+        ground_y = self._calculate_ground_height(p)
+
+        if p.world_pos[1] > ground_y + 0.02:
+            p.on_ground = False
+
+        if not p.on_ground:
+            p.velocity[1] += p.GRAVITY * dt
+
         p.world_pos[1] += p.velocity[1] * dt
-        if p.world_pos[1] < ground_y:
-            p.world_pos[1] = ground_y; p.velocity[1] = 0.0; p.on_ground = True
 
-        hw = ROOM_W/2 - 0.6; hd = ROOM_D/2 - 0.6
-        p.world_pos[0] = max(-hw, min(hw, p.world_pos[0]))
-        north_limit = -hd
-        if self.floor_state.stair_locked and (self.current_floor != self.FLOOR_ENTRY or self.floor_state.barrier_active):
-            north_limit = -9.5
-        p.world_pos[2] = max(north_limit, min(hd, p.world_pos[2]))
+        if p.world_pos[1] <= ground_y:
 
-        for (ox, oz, radius) in self.floor_state.obstacles:
-            dx = p.world_pos[0] - ox; dz = p.world_pos[2] - oz
-            dist2 = dx*dx + dz*dz; min_dist = radius + 0.5
-            if dist2 < min_dist*min_dist and dist2 > 0.0001:
-                dist = math.sqrt(dist2); push = (min_dist - dist) / dist
-                p.world_pos[0] += dx*push; p.world_pos[2] += dz*push
+            p.world_pos[1] = ground_y
+            p.velocity[1] = 0
+            p.on_ground = True
 
-        self.player_node.position  = [p.world_pos[0], p.world_pos[1]+SUBARU_Y_OFFSET, p.world_pos[2]]
-        self.player_node.rotation[1] = p.facing_deg
-        self.camera.update_third_person(p.world_pos)
-        self._update_player_animation(p, dt)
+    def _resolve_obstacle_collisions(self):
+
+        p = self.player
+
+        for hitbox in self.floor_state.obstacles:
+            hitbox.resolve_player_collision(p)
+
+    def _resolve_enemy_collisions(self):
 
         PLAYER_RADIUS = 0.5; ENEMY_RADIUS = 0.6
         for e, node in self.floor_state.enemies:
-            if e.dead: continue
+
+            if e.dead:
+                continue
+
             dx = self.player.world_pos[0] - e.world_pos[0]
             dz = self.player.world_pos[2] - e.world_pos[2]
-            dist2 = dx*dx + dz*dz; min_dist = PLAYER_RADIUS + ENEMY_RADIUS
-            if dist2 < min_dist*min_dist and dist2 > 0.0001:
-                dist = math.sqrt(dist2); push = (min_dist - dist) / dist
-                self.player.world_pos[0] += dx*push; self.player.world_pos[2] += dz*push
 
-    def _update_player_animation(self, p, dt):
-        if self.player_anim is None: return
-        if p.is_taking_damage:
-            self.player_anim.play("reaction")
-        elif not p.on_ground:
-            self.player_anim.play("jumping")
-        elif not self.player_anim.is_one_shot_active():
-            moving = (p.velocity[0]**2 + p.velocity[2]**2) > 0.01
-            self.player_anim.play("walking" if moving else "idle")
-        self.player_anim.update(dt)
+            dist2 = dx*dx + dz*dz
 
+            min_dist = PLAYER_RADIUS + ENEMY_RADIUS
+
+            if dist2 < min_dist * min_dist and dist2 > 0.0001:
+
+                dist = math.sqrt(dist2)
+
+                push = (min_dist - dist) / dist
+
+                self.player.world_pos[0] += dx * push
+                self.player.world_pos[2] += dz * push
+
+    def _update_player_visuals(self):
+
+        p = self.player
+
+        self.player_node.position = [
+            p.world_pos[0],
+            p.world_pos[1] + 0.5,
+            p.world_pos[2]
+        ]
+
+        self.player_node.rotation[1] = p.facing_deg
+
+        self.camera.update_third_person(
+            p.world_pos
+        )
+
+    def _apply_room_bounds(self):
+
+        p = self.player
+
+        hw = ROOM_W / 2 - 0.6
+        hd = ROOM_D / 2 - 0.6
+
+        p.world_pos[0] = max(
+            -hw,
+            min(hw, p.world_pos[0])
+        )
+
+        north_limit = -hd
+
+        if (
+            self.floor_state.stair_locked
+            and (
+                self.current_floor != self.FLOOR_ENTRY
+                or self.floor_state.barrier_active
+            )
+        ):
+            north_limit = -9.5
+
+        p.world_pos[2] = max(
+            north_limit,
+            min(hd, p.world_pos[2])
+        )
+
+    def _update_player(self, dt):
+
+        self._update_player_timers(dt)
+
+        self._update_player_input(dt)
+
+        self._handle_player_jump()
+
+        self._move_player_horizontal(dt)
+
+        self._update_player_ground(dt)
+
+        self._apply_room_bounds()
+
+        self._resolve_obstacle_collisions()
+
+        self._resolve_enemy_collisions()
+
+        self._update_player_visuals()
+                
     def _update_enemies(self, dt):
         for e, node in self.floor_state.enemies:
             if e.dead: continue
