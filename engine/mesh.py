@@ -153,28 +153,41 @@ def make_cube(half=0.5) -> tuple[np.ndarray, np.ndarray]:
     return verts, indices
 
 
-def make_plane(w=10.0, d=10.0, divs=1) -> tuple[np.ndarray, np.ndarray]:
-    """Flat XZ plane centred at origin."""
+def make_plane(w=10.0, d=10.0, divs=1, tile_u=1.0, tile_v=1.0):
     verts = []
-    idxs  = []
+    idxs = []
+
     step_x = w / divs
     step_z = d / divs
+
     for iz in range(divs + 1):
         for ix in range(divs + 1):
             x = -w/2 + ix * step_x
             z = -d/2 + iz * step_z
-            u = ix / divs
-            v = iz / divs
-            verts.extend([x, 0.0, z,  0, 1, 0,  u, v])
+
+            u = (ix / divs) * tile_u
+            v = (iz / divs) * tile_v
+
+            verts.extend([
+                x, 0.0, z,
+                0, 1, 0,
+                u, v
+            ])
+
     for iz in range(divs):
         for ix in range(divs):
-            row   = divs + 1
-            base  = iz * row + ix
-            idxs.extend([base, base+row, base+1,
-                          base+1, base+row, base+row+1])
-    return (np.array(verts, dtype=np.float32).reshape(-1, 8),
-            np.array(idxs,  dtype=np.uint32))
+            row = divs + 1
+            base = iz * row + ix
 
+            idxs.extend([
+                base, base + row, base + 1,
+                base + 1, base + row, base + row + 1
+            ])
+
+    return (
+        np.array(verts, dtype=np.float32).reshape(-1, 8),
+        np.array(idxs, dtype=np.uint32)
+    )
 
 def make_sphere(radius=0.5, stacks=16, slices=16) -> tuple[np.ndarray, np.ndarray]:
     import math

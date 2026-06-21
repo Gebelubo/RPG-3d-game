@@ -30,16 +30,14 @@ class Camera:
             math.sin(pitch_r),
             math.cos(pitch_r) * math.cos(yaw_r),
         ], dtype=np.float32))
-        world_up   = np.array([0, 1, 0], dtype=np.float32)
-        self.right = normalize(np.cross(self.front, world_up))
-        self.up    = normalize(np.cross(self.right, self.front))
+        world_up = np.array([0.0, 1.0, 0.0], dtype=np.float32)
+        right = np.cross(self.front, world_up)
+        if np.linalg.norm(right) < 1e-6:
+            right = np.array([1.0, 0.0, 0.0], dtype=np.float32)
+        self.right = normalize(right)
+        self.up = normalize(np.cross(self.right, self.front))
 
     def update_third_person(self, player_pos, blockers: list = None):
-        """
-        Update camera position around `player_pos`.
-        If `blockers` is provided, it should be an iterable of dicts with keys `pos` (3-array)
-        and `radius` (float). The camera will attempt to pull inwards to avoid intersecting blockers.
-        """
         target = np.array(player_pos, dtype=np.float32)
         target[1] += 1.0  # aim at chest
         self.target_pos = target
@@ -47,17 +45,22 @@ class Camera:
         # desired distance from target
         max_d = self.arm_length
 
-        # compute desired forward vector (front already updated by process_mouse)
+        # approximate ground height as player's feet (chest - 1.0)
+        ground_y = target[1] - 1.0
+        if self.front[1] > 1e-6:
+            t_ground = (target[1] - ground_y) / self.front[1]
+            if 0.1 < t_ground < max_d:
+                max_d = max(0.1, t_ground - 0.05)
+
+        # compute desired position along the camera `front` vector
         desired_pos = target - self.front * max_d
-        desired_pos[1] = target[1] + math.sin(math.radians(self.pitch)) * max_d + 0.5
 
         # if blockers provided, sample shorter distances to avoid intersections
         if blockers:
             safe_d = max_d
-            # test a few candidate distances from near to max_d
-            for d in np.linspace(0.6, max_d, num=12):
+            start = min(0.6, max_d)
+            for d in np.linspace(start, max_d, num=12):
                 cand = target - self.front * d
-                cand[1] = target[1] + math.sin(math.radians(self.pitch)) * d + 0.5
                 collision = False
                 for b in blockers:
                     bp = np.array(b["pos"], dtype=np.float32)
@@ -67,14 +70,13 @@ class Camera:
                 if not collision:
                     safe_d = d
             desired_pos = target - self.front * safe_d
-            desired_pos[1] = target[1] + math.sin(math.radians(self.pitch)) * safe_d + 0.5
 
         self.pos = desired_pos
 
     def process_mouse(self, dx: float, dy: float):
         self.yaw   -= dx * self.mouse_sens
         self.pitch -= dy * self.mouse_sens
-        self.pitch  = max(-10.0, min(50.0, self.pitch))
+        self.pitch  = max(-89.0, min(89.0, self.pitch))
         self._update_vectors()
 
     def process_keyboard(self, keys, dt):

@@ -11,7 +11,7 @@ Scene:
   single PointLight (moving)
   draw_all() uploads Phong uniforms and calls each node
 """
-
+import time
 import math
 import numpy as np
 from .math3d import (
@@ -79,13 +79,15 @@ class SceneNode:
 
     # ── Transform ─────────────────────────────────────────────────────────────
 
-    def model_matrix(self, parent: np.ndarray | None = None) -> np.ndarray:
+    def model_matrix(self, parent=None):
         T = translate(*self.position)
         Ry = rotate_y(self.rotation[1])
         Rx = rotate_x(self.rotation[0])
         Rz = rotate_z(self.rotation[2])
         S  = mat_scale(*self.scale)
+
         local = T @ Ry @ Rx @ Rz @ S
+
         if parent is not None:
             return parent @ local
         return local
@@ -105,6 +107,7 @@ class SceneNode:
     # ── Draw ──────────────────────────────────────────────────────────────────
 
     def draw(self, shader: ShaderProgram, parent_model: np.ndarray | None = None):
+
         if not self.visible:
             return
 
