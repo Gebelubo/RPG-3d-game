@@ -39,7 +39,7 @@ class Camera:
 
     def update_third_person(self, player_pos, blockers: list = None):
         target = np.array(player_pos, dtype=np.float32)
-        target[1] += 1.0  # aim at chest
+        target[1] += 1.4  # aim at chest
         self.target_pos = target
 
         # desired distance from target
