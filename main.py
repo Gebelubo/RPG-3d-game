@@ -911,8 +911,8 @@ class Game:
 
 
         # Escada no fundo (atrás da barreira)
-        # _build_stairs(self.scene, self.floor_state)
-        # self.floor_state.stair_locked = True
+        _build_stairs(self.scene, self.floor_state)
+        self.floor_state.stair_locked = True
 
 
         # Decoração: obeliscos encostados nas paredes laterais (x=±8.5, fora da área de passagem)
@@ -953,6 +953,10 @@ class Game:
         _add_tower_deco(self.scene, self.floor_state, "platform",
                         position=(5.0, 3.0, -3.0), scale=(0.2, 0.2, 0.2),
                         collision_radius=1.5)
+
+        _add_tower_deco(self.scene, self.floor_state, "platform",
+                position=(5.5, 5.0, -7.0), scale=(0.8, 0.2, 0.8),
+                collision_radius=1.5)
 
         piece_w, piece_h   = frame_w/2, frame_h/2
         pv, pi             = make_plane(piece_w, piece_h, 1)
@@ -1359,15 +1363,36 @@ class Game:
 
     def _try_activate_orb(self):
         p = self.player
+
         for piece in self.puzzle_pieces:
-            if piece["collected"]: continue
+
+            if piece["collected"]:
+                continue
+
             spos = piece["scatter_pos"]
-            dx = spos[0] - p.world_pos[0]; dz = spos[2] - p.world_pos[2]
-            if math.sqrt(dx*dx + dz*dz) < 2.0:
+
+            dx = spos[0] - p.world_pos[0]
+            dy = spos[1] - p.world_pos[1]
+            dz = spos[2] - p.world_pos[2]
+
+            dist = math.sqrt(
+                dx*dx +
+                dy*dy +
+                dz*dz
+            )
+
+            if dist < 2.0:
                 piece["collected"] = True
                 piece["node"].position = list(piece["mural_pos"])
-                self.hud.add_popup("Fragmento encaixado!", 1.5, (200,200,100))
-                self._check_puzzle(); return
+
+                self.hud.add_popup(
+                    "Fragmento encaixado!",
+                    1.5,
+                    (200,200,100)
+                )
+
+                self._check_puzzle()
+                return
 
     def _check_puzzle(self):
         if all(p["collected"] for p in self.puzzle_pieces):
