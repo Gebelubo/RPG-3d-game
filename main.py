@@ -77,6 +77,8 @@ STAIR_Z_SPACING = 1.0
 
 BEATRICE_Y_OFFSET = 0.5  # quanto a Beatrice fica acima do chão (ajuste de altura do modelo)
 SUBARU_Y_OFFSET    = 0.0  # quanto o modelo do Subaru fica acima do world_pos (chão lógico)
+HEARTLESS_Y_OFFSET = -0.5  # quanto o Heartless fica acima/abaixo do chão (negativo = mais baixo)
+AERIALKNOCKER_Y_OFFSET = 0.0  # quanto o AerialKnocker fica acima/abaixo do world_pos
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -261,7 +263,11 @@ def _load_obj_model(path, position=(0,0,0), rotation=(0,0,0), scale=(1,1,1)):
     parent = SceneNode(os.path.splitext(os.path.basename(path))[0],
                        position=list(position), rotation=list(rotation), scale=list(scale))
     for md in mesh_data_list:
-        mesh    = Mesh(md)
+        try:
+            mesh    = Mesh(md)
+        except Exception as exc:
+            print(f"Failed to build mesh from {path}: {exc}")
+            continue
         texture = None
         if mesh.texture_path:
             tex_name = os.path.basename(mesh.texture_path)
@@ -275,6 +281,9 @@ def _load_obj_model(path, position=(0,0,0), rotation=(0,0,0), scale=(1,1,1)):
         child = SceneNode(mesh.name, mesh=mesh, texture=texture)
         child.position[1] = -0.5
         parent.children.append(child)
+
+    if not parent.children:
+        return None
 
     return parent
 
@@ -299,6 +308,25 @@ SUBARU_GLB_FILES = {
 # enquanto ela estiver visível em cena.
 BEATRICE_GLB_PATH = os.path.join(_HERE, "assets", "models", "Beatrice", "beatrice_animation.glb")
 BEATRICE_CLIP_NAMES = {"idle": "Swim_Idle_Loop"}
+
+# Heartless terrestre animado (heartless_idle.glb – mesma origem Mixamo do Subaru)
+HEARTLESS_GLB_PATH  = os.path.join(_HERE, "assets", "models", "Heartless",     "heartless_idle.glb")
+HEARTLESS_TARGET_HEIGHT = 1.8  # altura alvo em metros para auto-scale (aumente este valor para um Heartless maior)
+
+# AerialKnocker animado (aerialknocker_idle.glb – mesma origem que Beatrice/Mixamo)
+AERIALKNOCKER_GLB_PATH  = os.path.join(_HERE, "assets", "models", "AerialKnocker", "aerialknocker_idle.glb")
+AERIALKNOCKER_TARGET_HEIGHT = 1.4
+
+# Nenhum dos dois .glb tem clipes chamados "Idle"/"Walking" (não é o padrão
+# Mixamo de fato) — cada um só exporta UM clipe de loop, com nome próprio:
+#   heartless_idle.glb     -> "mixamo.com"
+#   aerialknocker_idle.glb -> "Swim_Idle_Loop" (mesma origem da Beatrice)
+# Como só existe esse clipe único, mapeamos tanto "idle" quanto "walking"
+# para ele: assim o heartless/aerialknocker continuam tocando o mesmo loop
+# ao andar em vez de cair no bind pose estático por falta de clipe "Walking".
+HEARTLESS_CLIP_NAMES = {"idle": "mixamo.com", "walking": "mixamo.com"}
+AERIALKNOCKER_CLIP_NAMES = {"idle": "Swim_Idle_Loop", "walking": "Swim_Idle_Loop"}
+
 
 
 def _load_skinned_player(position=(0, 0, 0), rotation=(0, 180, 0)):
@@ -458,28 +486,188 @@ def _load_skinned_beatrice(position=(0, 0, 0), rotation=(0, 180, 0)):
     return node, skinned_mesh, anim_controller
 
 
+_HEARTLESS_SKINNED_CACHE: dict = {}
+_AERIALKNOCKER_SKINNED_CACHE: dict = {}
+
+
+def _load_skinned_heartless(position=(0, 0, 0), rotation=(0, 180, 0)):
+    """Carrega heartless_idle.glb como skinned mesh animado.
+    Retorna (node, skinned_mesh, anim_controller) ou (None, None, None)."""
+    cache_key = HEARTLESS_GLB_PATH
+    if cache_key not in _HEARTLESS_SKINNED_CACHE:
+        try:
+            if not os.path.isfile(HEARTLESS_GLB_PATH):
+                _HEARTLESS_SKINNED_CACHE[cache_key] = None
+            else:
+                loader = GLTFLoader()
+                smd    = loader.load_merged(HEARTLESS_GLB_PATH)
+                if smd is None:
+                    raise ValueError("nenhuma primitive com skin encontrada")
+                smd._primitives = loader.last_primitives
+                if not smd.clips:
+                    raise ValueError("heartless_idle.glb não contém animações")
+                if not smd.texture_path:
+                    fallback = os.path.join(os.path.dirname(HEARTLESS_GLB_PATH), "tx_Heartless.png")
+                    smd.texture_path = fallback if os.path.isfile(fallback) else None
+                _HEARTLESS_SKINNED_CACHE[cache_key] = smd
+        except Exception as exc:
+            print(f"GLB load failed for Heartless: {exc}")
+            _HEARTLESS_SKINNED_CACHE[cache_key] = None
+
+    smd = _HEARTLESS_SKINNED_CACHE[cache_key]
+    if smd is None:
+        return None, None, None
+
+    skinned_mesh             = SkinnedMesh(smd)
+    skinned_mesh._primitives = getattr(smd, '_primitives', None)
+    anim_controller          = AnimationController(smd.bones, smd.clips, clip_names=HEARTLESS_CLIP_NAMES)
+    anim_controller.play("idle")
+
+    auto_scale = getattr(smd, "_auto_scale", None)
+    if auto_scale is None:
+        bone_matrices = anim_controller.get_bone_matrices()
+        bm    = np.stack(bone_matrices, axis=0)
+        pos_h = np.concatenate([smd.vertices[:, :3],
+                                 np.ones((len(smd.vertices), 1), dtype=np.float32)], axis=1)
+        skinned_y = np.zeros(len(smd.vertices), dtype=np.float32)
+        for k in range(smd.joints.shape[1]):
+            joint_idx    = smd.joints[:, k].astype(np.int64)
+            w            = smd.weights[:, k]
+            transformed  = np.einsum('nij,nj->ni', bm[joint_idx], pos_h)
+            skinned_y   += w * transformed[:, 1]
+        raw_height = float(skinned_y.max() - skinned_y.min()) if len(skinned_y) else 0.0
+        auto_scale = (HEARTLESS_TARGET_HEIGHT / raw_height) if raw_height > 1e-4 else 1.0
+        smd._auto_scale = auto_scale
+
+    node      = SceneNode("heartless_skinned", position=list(position), rotation=list(rotation),
+                          scale=[auto_scale, auto_scale, auto_scale])
+    node.mesh = skinned_mesh
+
+    texture = None
+    if smd.texture_path:
+        try:
+            texture = Texture(smd.texture_path)
+        except Exception as exc:
+            print(f"Failed to load Heartless texture {smd.texture_path}: {exc}")
+    node.texture = texture
+
+    return node, skinned_mesh, anim_controller
+
+
+def _load_skinned_aerialknocker(position=(0, 0, 0), rotation=(0, 180, 0)):
+    """Carrega aerialknocker_idle.glb como skinned mesh animado.
+    Retorna (node, skinned_mesh, anim_controller) ou (None, None, None)."""
+    cache_key = AERIALKNOCKER_GLB_PATH
+    if cache_key not in _AERIALKNOCKER_SKINNED_CACHE:
+        try:
+            if not os.path.isfile(AERIALKNOCKER_GLB_PATH):
+                _AERIALKNOCKER_SKINNED_CACHE[cache_key] = None
+            else:
+                loader = GLTFLoader()
+                smd    = loader.load_merged(AERIALKNOCKER_GLB_PATH)
+                if smd is None:
+                    raise ValueError("nenhuma primitive com skin encontrada")
+                smd._primitives = loader.last_primitives
+                if not smd.clips:
+                    raise ValueError("aerialknocker_idle.glb não contém animações")
+                if not smd.texture_path:
+                    fallback = os.path.join(os.path.dirname(AERIALKNOCKER_GLB_PATH), "tx_AerialKnocker.png")
+                    smd.texture_path = fallback if os.path.isfile(fallback) else None
+                _AERIALKNOCKER_SKINNED_CACHE[cache_key] = smd
+        except Exception as exc:
+            print(f"GLB load failed for AerialKnocker: {exc}")
+            _AERIALKNOCKER_SKINNED_CACHE[cache_key] = None
+
+    smd = _AERIALKNOCKER_SKINNED_CACHE[cache_key]
+    if smd is None:
+        return None, None, None
+
+    skinned_mesh             = SkinnedMesh(smd)
+    skinned_mesh._primitives = getattr(smd, '_primitives', None)
+    anim_controller          = AnimationController(smd.bones, smd.clips, clip_names=AERIALKNOCKER_CLIP_NAMES)
+    anim_controller.play("idle")
+
+    auto_scale = getattr(smd, "_auto_scale", None)
+    if auto_scale is None:
+        bone_matrices = anim_controller.get_bone_matrices()
+        bm    = np.stack(bone_matrices, axis=0)
+        pos_h = np.concatenate([smd.vertices[:, :3],
+                                 np.ones((len(smd.vertices), 1), dtype=np.float32)], axis=1)
+        skinned_y = np.zeros(len(smd.vertices), dtype=np.float32)
+        for k in range(smd.joints.shape[1]):
+            joint_idx    = smd.joints[:, k].astype(np.int64)
+            w            = smd.weights[:, k]
+            transformed  = np.einsum('nij,nj->ni', bm[joint_idx], pos_h)
+            skinned_y   += w * transformed[:, 1]
+        raw_height = float(skinned_y.max() - skinned_y.min()) if len(skinned_y) else 0.0
+        auto_scale = (AERIALKNOCKER_TARGET_HEIGHT / raw_height) if raw_height > 1e-4 else 1.0
+        smd._auto_scale = auto_scale
+
+    node      = SceneNode("aerialknocker_skinned", position=list(position), rotation=list(rotation),
+                          scale=[auto_scale, auto_scale, auto_scale])
+    node.mesh = skinned_mesh
+
+    texture = None
+    if smd.texture_path:
+        try:
+            texture = Texture(smd.texture_path)
+        except Exception as exc:
+            print(f"Failed to load AerialKnocker texture {smd.texture_path}: {exc}")
+    node.texture = texture
+
+    return node, skinned_mesh, anim_controller
+
+
 def _spawn_heartless(scene, pos, scale=(0.012,0.012,0.012), level=2, stationary=False, flying=False):
+    skinned_mesh = None
+    anim_controller = None
+
     if flying:
-        model_path = os.path.join(_HERE, "assets", "models", "AerialKnocker", "AerialKnocker.obj")
-        model_scale = (scale[0] * 0.8, scale[1] * 0.8, scale[2] * 0.8)  # ajuste fino se necessário
-        rotation = (0, 180, 0)
+        # Tenta carregar AerialKnocker como skinned mesh animado
+        ak_pos = (pos[0], pos[1] + AERIALKNOCKER_Y_OFFSET, pos[2])
+        sk_node, skinned_mesh, anim_controller = _load_skinned_aerialknocker(
+            position=ak_pos, rotation=(0, 180, 0)
+        )
+        if sk_node is not None:
+            # Skinned: posicionado diretamente pelo loader; não entra em scene.add()
+            # O render é feito por _render_enemy_skinned_meshes(), igual ao player.
+            node = sk_node
+        else:
+            # Fallback: .obj estático
+            model_path  = os.path.join(_HERE, "assets", "models", "AerialKnocker", "AerialKnocker.obj")
+            model_scale = (scale[0] * 0.8, scale[1] * 0.8, scale[2] * 0.8)
+            node = _load_obj_model(model_path, position=ak_pos, rotation=(0, 180, 0), scale=model_scale)
+            if node is None:
+                ev, ei = make_sphere(0.45, 10, 10)
+                em = ProceduralMesh("heartless", ev, ei, base_color=(0.3, 0.3, 0.9),
+                                    ka=0.3, kd=0.8, ks=0.3, shininess=16)
+                node = SceneNode("heartless", mesh=em, position=list(ak_pos))
+            scene.add(node)
     else:
-        model_path  = os.path.join(_HERE, "assets", "models", "Heartless", "Heartless.obj")
-        model_scale = scale
-        pos = (pos[0], pos[1] - 0.5, pos[2])  # ajuste para alinhar com o chão
-        rotation = (180, 0, 0)
+        # Tenta carregar Heartless terrestre como skinned mesh animado
+        adj_pos = (pos[0], pos[1] + HEARTLESS_Y_OFFSET, pos[2])
+        sk_node, skinned_mesh, anim_controller = _load_skinned_heartless(
+            position=adj_pos, rotation=(0, 180, 0)
+        )
+        if sk_node is not None:
+            node = sk_node
+        else:
+            # Fallback: .obj estático
+            model_path  = os.path.join(_HERE, "assets", "models", "Heartless", "Heartless.obj")
+            node = _load_obj_model(model_path, position=adj_pos, rotation=(180, 0, 0), scale=scale)
+            if node is None:
+                ev, ei = make_sphere(0.45, 10, 10)
+                em = ProceduralMesh("heartless", ev, ei, base_color=(0.7, 0.1, 0.1),
+                                    ka=0.3, kd=0.8, ks=0.3, shininess=16)
+                node = SceneNode("heartless", mesh=em, position=list(adj_pos))
+            scene.add(node)
 
-    node = _load_obj_model(model_path, position=pos, rotation=rotation, scale=model_scale)
-
-    if node is None:
-        ev, ei = make_sphere(0.45, 10, 10)
-        color  = (0.3, 0.3, 0.9) if flying else (0.7, 0.1, 0.1)
-        em     = ProceduralMesh("heartless", ev, ei, base_color=color, ka=0.3, kd=0.8, ks=0.3, shininess=16)
-        node   = SceneNode("heartless", mesh=em, position=list(pos))
-
-    scene.add(node)
     e = Enemy("Heartless", level=level, world_pos=list(pos), stationary=stationary)
-    e.spawn_pos = list(pos)
+    e.spawn_pos     = list(pos)
+    e._skinned_mesh = skinned_mesh      # None se usou fallback .obj
+    e._anim         = anim_controller   # None se usou fallback .obj
+    e._anim_state   = None
+    e._y_offset     = AERIALKNOCKER_Y_OFFSET if flying else HEARTLESS_Y_OFFSET
     return e, node
 
 
@@ -563,7 +751,7 @@ class Game:
         pygame.mixer.set_num_channels(32)
         pygame.mixer.music.load(os.path.join(_HERE, "assets", "music", "menu.mp3"))
         pygame.mixer.music.set_volume(0.2)
-        pygame.mixer.music.play(-1)
+        pygame.mixer.music.play(-1, start=3.0)
         self.sounds = Effects()
         pygame.display.set_mode((SCREEN_W, SCREEN_H), DOUBLEBUF|OPENGL|RESIZABLE)
         pygame.display.set_caption(TITLE)
@@ -643,6 +831,16 @@ class Game:
         if getattr(self, 'beatrice_skinned_mesh', None) is not None:
             self.beatrice_skinned_mesh.destroy()
             self.beatrice_skinned_mesh = None
+        # Destroi os skinned meshes de inimigos animados (Heartless / AerialKnocker)
+        if hasattr(self, 'floor_state') and self.floor_state is not None:
+            for e, _node in getattr(self.floor_state, 'enemies', []):
+                sm = getattr(e, '_skinned_mesh', None)
+                if sm is not None:
+                    try:
+                        sm.destroy()
+                    except Exception:
+                        pass
+                    e._skinned_mesh = None
         self.player_anim    = None
         self.player_node    = None
         self.beatrice_anim  = None
@@ -948,7 +1146,7 @@ class Game:
                                   position=(frame_cx, frame_cy, -8.92), rotation=(90,0,0)))
         bv, bi = make_plane(frame_w, frame_h, 1)
         self.scene.add(SceneNode("puzzle_backing", mesh=ProceduralMesh("puzzle_backing", bv, bi, base_color=(0.05,0.05,0.08), ka=0.5, kd=0.3, ks=0.0, shininess=1),
-                                  position=(frame_cx, frame_cy, -8.9), rotation=(90,0,0)))
+                                  position=(frame_cx, frame_cy, -8.91), rotation=(90,0,0)))
 
         _add_tower_deco(self.scene, self.floor_state, "platform",
                         position=(7.0, 1.0, 0.0), scale=(0.8, 0.8, 0.8),
@@ -992,6 +1190,9 @@ class Game:
         self.hud.add_popup("[Z] perto de cada fragmento para encaixá-lo no quadro", 4.0, (180,180,220))
 
     def _build_floor_aerial(self):
+        pygame.mixer.music.stop()
+        pygame.mixer.music.load(os.path.join(_HERE, "assets", "music", "combat.mp3"))
+        pygame.mixer.music.play()
         self._build_room(floor_color=(0.16,0.14,0.22), wall_color=(0.24,0.20,0.34))
         self._place_player(pos=(0,0,12))
 
@@ -1071,9 +1272,6 @@ class Game:
         self.hud.add_popup("Corredor Final! Sobreviva!", 3.0, (255,100,100))
 
     def _build_floor_rest(self):
-        pygame.mixer.music.stop()
-        pygame.mixer.music.load(os.path.join(_HERE, "assets", "music", "tower.mp3"))
-        pygame.mixer.music.play()
         self._build_room(floor_color=(0.15,0.22,0.18), wall_color=(0.20,0.30,0.24), ceil_color=(0.12,0.20,0.16))
         self._place_player(pos=(0,0,8))
         self.scene.add(SceneNode("altar_rest", mesh=make_box_mesh("altar_rest",4.0,0.5,2.0, color=(0.4,0.6,0.5)), position=(0,0.25,0)))
@@ -1089,6 +1287,9 @@ class Game:
         self.scene.add(SceneNode("boss_door", mesh=make_box_mesh("boss_door",3.0,4.0,0.3, color=(0.6,0.2,0.6)), position=(0,2.0,-13.0)))
 
     def _build_floor_boss(self):
+        pygame.mixer.music.stop()
+        pygame.mixer.music.load(os.path.join(_HERE, "assets", "music", "boss.mp3"))
+        pygame.mixer.music.play()
         self._build_room(floor_color=(0.20,0.05,0.20), wall_color=(0.28,0.08,0.28), ceil_color=(0.15,0.04,0.18))
         self._place_player(pos=(0,0,10))
         self.floor_state.stair_locked  = False
@@ -1113,7 +1314,11 @@ class Game:
         # Tenta carregar modelo do Marluxia se existir
         m_path = os.path.join(_HERE,"assets","models","Marluxia","Marluxia.obj")
         if os.path.exists(m_path):
-            loaded = _load_obj_model(m_path, position=(0,0,-8), rotation=(90,0,0), scale=(0.014,0.014,0.014))
+            try:
+                loaded = _load_obj_model(m_path, position=(0,0,-8), rotation=(90,0,0), scale=(0.014,0.014,0.014))
+            except Exception as exc:
+                print(f"Falha ao carregar Marluxia.obj, usando fallback: {exc}")
+                loaded = None
             if loaded:
                 boss_node = loaded
 
@@ -1185,9 +1390,6 @@ class Game:
         ], callback=self._start_credits)
 
     def _start_credits(self):
-        pygame.mixer.music.stop()
-        pygame.mixer.music.load(os.path.join(_HERE, "assets", "music", "credits.mp3"))
-        pygame.mixer.music.play()
         self.credits_active = True
         self.credits_timer  = 0.0
         self.credits_y      = self.screen_h + 20
@@ -1318,12 +1520,18 @@ class Game:
                 fs.stair_locked = False
                 fs.barrier_node.visible = False
                 fs.barrier_active = False
+                pygame.mixer.music.stop()
+                pygame.mixer.music.load(os.path.join(_HERE, "assets", "music", "tower.mp3"))
+                pygame.mixer.music.play()
                 self.hud.add_popup("A barreira caiu! Suba as escadas.", 3.0, (200,255,200))
 
         elif self.current_floor == self.FLOOR_AERIAL:
             if not alive:
                 fs.stair_locked = False
                 if fs.barrier_node: fs.barrier_node.visible = False
+                pygame.mixer.music.stop()
+                pygame.mixer.music.load(os.path.join(_HERE, "assets", "music", "tower.mp3"))
+                pygame.mixer.music.play()
                 self.hud.add_popup("Todos derrotados! Suba as escadas.", 3.0, (200,255,200))
 
         elif self.current_floor == self.FLOOR_GAUNTLET:
@@ -1338,6 +1546,9 @@ class Game:
                     self.hud.add_popup("Próxima onda!", 2.0, (255,180,100))
                 else:
                     fs.stair_locked = False
+                    pygame.mixer.music.stop()
+                    pygame.mixer.music.load(os.path.join(_HERE, "assets", "music", "tower.mp3"))
+                    pygame.mixer.music.play()
                     self.hud.add_popup("Corredor limpo! Avance pela porta.", 3.0, (200,255,200))
 
         elif self.current_floor == self.FLOOR_BOSS:
@@ -1345,6 +1556,9 @@ class Game:
                 self._on_boss_defeated()
 
     def _on_boss_defeated(self):
+        pygame.mixer.music.stop()
+        pygame.mixer.music.load(os.path.join(_HERE, "assets", "music", "credits.mp3"))
+        pygame.mixer.music.play()
         self.game_mode = "story"; self.input.capture_mouse(False); self._show_ending()
 
     # ── Player attack (real-time) ─────────────────────────────────────────────
@@ -1405,7 +1619,9 @@ class Game:
 
             if dist < 2.0:
                 piece["collected"] = True
-                piece["node"].position = list(piece["mural_pos"])
+                mpos = list(piece["mural_pos"])
+                mpos[2] += 0.00 
+                piece["node"].position = mpos
 
                 self.hud.add_popup(
                     "Fragmento encaixado!",
@@ -1573,6 +1789,10 @@ class Game:
             if pz < -10.0 and not self.floor_state.stair_locked:
                 self._advance_floor(); return
             if pz < -10.0 and abs(px) < 3.0 and not self.floor_state.barrier_active and self.floor_state.stair_locked:
+                pygame.mixer.music.stop()
+                pygame.mixer.music.load(os.path.join(_HERE, "assets", "music", "combat.mp3"))
+                pygame.mixer.music.play()
+                self.floor_state.barrier_active = True
                 self.floor_state.barrier_active = True
                 self.floor_state.barrier_node.visible = True
                 for ep in [(-3,0.5,-5),(3,0.5,-5),(0,0.5,-3)]:
@@ -2011,9 +2231,25 @@ class Game:
         for e, node in self.floor_state.enemies:
             if e.dead: continue
             e.update(self.player.world_pos, dt)
-            node.position = list(e.world_pos)
+            y_off = getattr(e, '_y_offset', 0.0)
+            node.position = [e.world_pos[0], e.world_pos[1] + y_off, e.world_pos[2]]
             if not getattr(e, 'stationary', False):
                 node.rotation[1] = e.facing_deg
+
+            # Animação: avança o controller e escolhe idle vs walking
+            anim = getattr(e, '_anim', None)
+            if anim is not None:
+                is_moving = (not getattr(e, 'stationary', False)
+                             and getattr(e, 'aggro', False))
+                target_state = "walking" if is_moving else "idle"
+                current_state = getattr(e, '_anim_state', None)
+
+                if current_state != target_state:
+                    e._anim_state = target_state
+                    anim.play(target_state)
+            if anim is not None:
+                anim.update(dt)
+
             if e.aggro and self.player.invincible <= 0.0:
                 dx = e.world_pos[0]-self.player.world_pos[0]
                 dz = e.world_pos[2]-self.player.world_pos[2]
@@ -2047,6 +2283,7 @@ class Game:
         self.scene.draw(self.phong_shader, self.camera)
         self._render_skinned_player()
         self._render_skinned_beatrice()
+        self._render_enemy_skinned_meshes()
         glDisable(GL_DEPTH_TEST)
         self._draw_hud()
         if getattr(self, '_fade_alpha', 0.0) > 0.0:
@@ -2068,6 +2305,21 @@ class Game:
         if self.beatrice_node is None or not self.beatrice_node.visible:
             return
         self._render_skinned(self.beatrice_node, self.beatrice_skinned_mesh, self.beatrice_anim)
+
+    def _render_enemy_skinned_meshes(self):
+        """Desenha todos os inimigos que foram carregados como skinned mesh
+        (Heartless terrestre e AerialKnocker). Inimigos com fallback .obj
+        já estão na scene e são renderizados por scene.draw() normalmente."""
+        for e, node in self.floor_state.enemies:
+            if e.dead:
+                continue
+            skinned_mesh = getattr(e, '_skinned_mesh', None)
+            anim         = getattr(e, '_anim', None)
+            if skinned_mesh is None or anim is None:
+                continue
+            if not node.visible:
+                continue
+            self._render_skinned(node, skinned_mesh, anim)
 
     def _render_skinned(self, node, skinned_mesh, anim_controller):
         """Desenha um SkinnedMesh com skeleton animado (uBoneMatrices).

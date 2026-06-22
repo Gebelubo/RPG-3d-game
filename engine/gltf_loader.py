@@ -98,12 +98,15 @@ class GLTFLoader:
                     derived = np.linalg.inv(skin_m).astype(np.float32)
                     if not np.allclose(derived, np.eye(4, dtype=np.float32)):
                         # Esta normalização (manter só a rotação de 'derived' e
-                        # zerar a escala) é exclusiva do asset da Beatrice — é o
-                        # que cancela corretamente o inverso do /100 aplicado em
-                        # _build_bones para ESSE asset especificamente. Para os
-                        # demais assets (ex.: Subaru), 'derived' já vem correto
-                        # do jeito que o código original (pré-correção Beatrice)
-                        # calculava, então não tocamos nele.
+                        # zerar a escala) é usada pelos assets no fluxo "estilo
+                        # Beatrice" (self._is_beatrice — ver load_merged, hoje
+                        # inclui Beatrice e AerialKnocker) — é o que cancela
+                        # corretamente o inverso do /100 aplicado em
+                        # _build_bones para ESSES assets especificamente. Para
+                        # os demais assets (ex.: Subaru, Heartless), 'derived'
+                        # já vem correto do jeito que o código original
+                        # (pré-correção Beatrice) calculava, então não tocamos
+                        # nele.
                         if getattr(self, '_is_beatrice', False):
                             rot_only = derived[:3, :3].copy()
                             col_norms = np.linalg.norm(rot_only, axis=0)
@@ -141,15 +144,17 @@ class GLTFLoader:
         joint_node_indices = list(skin.joints)
         node_to_bone = {n: i for i, n in enumerate(joint_node_indices)}
 
-        # Identifica se este asset é o da Beatrice (pelo nome do arquivo) para
-        # decidir qual fluxo de correção de unidade usar:
-        #  - Beatrice: detecção automática cm->m via heurística na escala da
-        #    inverse bind matrix (necessária porque o export da Beatrice tem
-        #    comportamento diferente do Subaru).
-        #  - Qualquer outro asset (ex.: Subaru): mantém o comportamento
-        #    histórico/original — sempre assume centímetros e aplica /100,
-        #    sem essa heurística, porque é isso que funciona pra ele.
-        self._is_beatrice = "beatrice" in os.path.basename(path).lower()
+        # Identifica se este asset usa o fluxo de correção "estilo Beatrice"
+        # (detecção automática cm->m via heurística na escala da inverse bind
+        # matrix + normalização da rotação em _compute_root_transform).
+        # Necessário para assets que vieram do mesmo exportador/pipeline da
+        # Beatrice — hoje isso inclui o AerialKnocker, que comprime/esmaga
+        # exatamente como a Beatrice esmagava antes dessa correção.
+        # Qualquer outro asset (ex.: Subaru, Heartless) mantém o
+        # comportamento histórico/original — sempre assume centímetros e
+        # aplica /100, sem essa heurística, porque é isso que funciona pra eles.
+        basename_lower = os.path.basename(path).lower()
+        self._is_beatrice = any(tag in basename_lower for tag in ("beatrice", "aerialknocker"))
 
         if self._is_beatrice:
             # Detecta uma única vez se este asset foi exportado em centímetros

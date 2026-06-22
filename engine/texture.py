@@ -24,7 +24,9 @@ class Texture:
 
     def _load(self, path: str):
         try:
-            img  = Image.open(path).transpose(Image.FLIP_TOP_BOTTOM)
+            img = Image.open(path)
+            img.thumbnail((1024, 1024), Image.LANCZOS)   # limita a 1024px mantendo proporção
+            img = img.transpose(Image.FLIP_TOP_BOTTOM)
             fmt  = GL_RGBA if img.mode == "RGBA" else GL_RGB
             data = img.convert("RGBA" if fmt == GL_RGBA else "RGB").tobytes()
 

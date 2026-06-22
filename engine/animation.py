@@ -193,7 +193,7 @@ class AnimationController:
                                          bone.local_bind_rotation,
                                          bone.local_bind_scale))
                 continue
-            ct = t % max(track.times[-1], 1e-6) if clip and clip.duration > 0 else 0.0
+            ct = t % clip.duration if clip and clip.duration > 0 else 0.0
             tr, rot, sc = self._sample_track(track, ct)
             out.append(_trs_to_mat4(tr, rot, sc))
         return out
