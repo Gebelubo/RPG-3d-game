@@ -359,21 +359,9 @@ def _load_skinned_player(position=(0, 0, 0), rotation=(0, 180, 0)):
             transformed = np.einsum('nij,nj->ni', bm[joint_idx], pos_h)
             skinned_y  += w * transformed[:, 1]
 
-            raw_min = float(skinned_y.min())
-            raw_max = float(skinned_y.max())
-
-            raw_height = raw_max - raw_min
-
-            auto_scale = (
-                SUBARU_TARGET_HEIGHT / raw_height
-                if raw_height > 1e-4
-                else 1.0
-            )
-
-            smd._auto_scale = auto_scale
-
-            # distância do pivô até os pés
-            smd._foot_offset = raw_min * auto_scale
+        raw_height = float(skinned_y.max() - skinned_y.min()) if len(skinned_y) else 0.0
+        auto_scale = (SUBARU_TARGET_HEIGHT / raw_height) if raw_height > 1e-4 else 1.0
+        smd._auto_scale = auto_scale
 
     node      = SceneNode("subaru_skinned", position=list(position), rotation=list(rotation),
                           scale=[auto_scale, auto_scale, auto_scale])
@@ -439,7 +427,6 @@ def _load_skinned_beatrice(position=(0, 0, 0), rotation=(0, 180, 0)):
     anim_controller.play("idle")
 
     auto_scale = getattr(smd, "_auto_scale", None)
-    foot_offset = getattr(smd, "_foot_offset", 0.0)
     if auto_scale is None:
         bone_matrices = anim_controller.get_bone_matrices()
         bm    = np.stack(bone_matrices, axis=0)
@@ -456,16 +443,8 @@ def _load_skinned_beatrice(position=(0, 0, 0), rotation=(0, 180, 0)):
         auto_scale = (BEATRICE_TARGET_HEIGHT / raw_height) if raw_height > 1e-4 else 1.0
         smd._auto_scale = auto_scale
 
-        node = SceneNode(
-            "subaru_skinned",
-            position=[
-                position[0],
-                position[1] - foot_offset,
-                position[2]
-            ],
-            rotation=list(rotation),
-            scale=[auto_scale, auto_scale, auto_scale]
-        )
+    node      = SceneNode("beatrice_skinned", position=list(position), rotation=list(rotation),
+                          scale=[auto_scale, auto_scale, auto_scale])
     node.mesh = skinned_mesh
 
     texture = None
@@ -963,9 +942,21 @@ class Game:
         self.scene.add(SceneNode("puzzle_backing", mesh=ProceduralMesh("puzzle_backing", bv, bi, base_color=(0.05,0.05,0.08), ka=0.5, kd=0.3, ks=0.0, shininess=1),
                                   position=(frame_cx, frame_cy, -8.9), rotation=(90,0,0)))
 
+        _add_tower_deco(self.scene, self.floor_state, "platform",
+                        position=(7.0, 1.0, 0.0), scale=(0.8, 0.8, 0.8),
+                        collision_radius=1.5)
+        
+        _add_tower_deco(self.scene, self.floor_state, "platform",
+                        position=(9.0, 4.0, -5.0), scale=(0.2, 0.2, 0.2),
+                        collision_radius=1.5)
+
+        _add_tower_deco(self.scene, self.floor_state, "platform",
+                        position=(5.0, 3.0, -3.0), scale=(0.2, 0.2, 0.2),
+                        collision_radius=1.5)
+
         piece_w, piece_h   = frame_w/2, frame_h/2
         pv, pi             = make_plane(piece_w, piece_h, 1)
-        scatter_positions  = [(-4,1.4,-2),(4,1.4,-2),(-4,1.4,2),(4,1.4,2)]
+        scatter_positions  = [(-4,1.4,-2),(5.5,6,-7),(-4,1.4,2),(4,1.4,2)]
         mural_offsets      = [(-piece_w/2, piece_h/2),(piece_w/2, piece_h/2),(-piece_w/2,-piece_h/2),(piece_w/2,-piece_h/2)]
         img_dir            = os.path.join(_HERE, "assets", "images", "puzzle")
 
