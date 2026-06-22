@@ -154,7 +154,7 @@ class GLTFLoader:
         # comportamento histórico/original — sempre assume centímetros e
         # aplica /100, sem essa heurística, porque é isso que funciona pra eles.
         basename_lower = os.path.basename(path).lower()
-        self._is_beatrice = any(tag in basename_lower for tag in ("beatrice", "aerialknocker"))
+        self._is_beatrice = any(tag in basename_lower for tag in ("beatrice", "aerialknocker", "marluxia"))
 
         if self._is_beatrice:
             # Detecta uma única vez se este asset foi exportado em centímetros

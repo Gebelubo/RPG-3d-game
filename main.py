@@ -327,6 +327,19 @@ AERIALKNOCKER_TARGET_HEIGHT = 1.4
 HEARTLESS_CLIP_NAMES = {"idle": "mixamo.com", "walking": "mixamo.com"}
 AERIALKNOCKER_CLIP_NAMES = {"idle": "Swim_Idle_Loop", "walking": "Swim_Idle_Loop"}
 
+# Emilia animada – mesmo pipeline do Subaru (sem NGC, defaults neutros)
+EMILIA_GLB_PATH         = os.path.join(_HERE, "assets", "models", "Emilia", "emilia_idle.glb")
+EMILIA_TARGET_HEIGHT    = 1.7
+EMILIA_Y_OFFSET         = 0.0  # deitada no chão: Y sobe para ficar sobre a superfície
+EMILIA_CLIP_NAMES       = {"idle": "mixamo.com"}  # nome real do clipe no GLB
+EMILIA_MANUAL_SCALE     = 0.017  # escala manual: GLB tem scale:100 nos nodes, auto_scale falha
+
+# Marluxia animado – mesmo pipeline da Beatrice/AerialKnocker (NGC Beatrice)
+MARLUXIA_GLB_PATH       = os.path.join(_HERE, "assets", "models", "Marluxia", "marluxia_idle.glb")
+MARLUXIA_TARGET_HEIGHT  = 2.5  # aumentado de 1.9 → 2.5 (ajuste à vontade)
+MARLUXIA_Y_OFFSET       = 0.0
+MARLUXIA_CLIP_NAMES     = {"idle": None}  # preenchido dinamicamente
+
 
 
 def _load_skinned_player(position=(0, 0, 0), rotation=(0, 180, 0)):
@@ -488,6 +501,135 @@ def _load_skinned_beatrice(position=(0, 0, 0), rotation=(0, 180, 0)):
 
 _HEARTLESS_SKINNED_CACHE: dict = {}
 _AERIALKNOCKER_SKINNED_CACHE: dict = {}
+_EMILIA_SKINNED_CACHE:        dict = {}
+_MARLUXIA_SKINNED_CACHE:      dict = {}
+
+
+def _load_skinned_emilia(position=(0, 0, 0), rotation=(0, 0, 0)):
+    """Carrega emilia_idle.glb como skinned mesh animado.
+    Usa o mesmo pipeline do Subaru (sem NGC, _needs_cm_to_m=True, defaults neutros).
+    Retorna (node, skinned_mesh, anim_controller) ou (None, None, None)."""
+    cache_key = EMILIA_GLB_PATH
+    if cache_key not in _EMILIA_SKINNED_CACHE:
+        try:
+            if not os.path.isfile(EMILIA_GLB_PATH):
+                _EMILIA_SKINNED_CACHE[cache_key] = None
+            else:
+                loader = GLTFLoader()
+                smd    = loader.load_merged(EMILIA_GLB_PATH)
+                if smd is None:
+                    raise ValueError("nenhuma primitive com skin encontrada")
+                smd._primitives = loader.last_primitives
+                if not smd.clips:
+                    raise ValueError("emilia_idle.glb não contém animações")
+                # Nome do clipe já definido em EMILIA_CLIP_NAMES ("mixamo.com")
+                # Garante que o clipe existe; se o loader renomeou, usa o primeiro disponível
+                if "mixamo.com" not in smd.clips:
+                    real_clip = next(iter(smd.clips))
+                    EMILIA_CLIP_NAMES["idle"] = real_clip
+                    print(f"[Emilia] clipe 'mixamo.com' não encontrado, usando: {repr(real_clip)}")
+                if not smd.texture_path:
+                    fallback = os.path.join(os.path.dirname(EMILIA_GLB_PATH), "tx_Emilia_Base.png")
+                    smd.texture_path = fallback if os.path.isfile(fallback) else None
+                _EMILIA_SKINNED_CACHE[cache_key] = smd
+        except Exception as exc:
+            print(f"GLB load failed for Emilia: {exc}")
+            _EMILIA_SKINNED_CACHE[cache_key] = None
+
+    smd = _EMILIA_SKINNED_CACHE[cache_key]
+    if smd is None:
+        return None, None, None
+
+    skinned_mesh             = SkinnedMesh(smd)
+    skinned_mesh._primitives = getattr(smd, '_primitives', None)
+    anim_controller          = AnimationController(smd.bones, smd.clips, clip_names=EMILIA_CLIP_NAMES)
+    anim_controller.play("idle")
+
+    # O GLB da Emilia tem scale:[100,100,100] nos nodes internos, o que faz o
+    # auto_scale baseado em altura de vértices dar errado. Usamos escala manual.
+    EMILIA_MANUAL_SCALE = 0.75
+    scale = EMILIA_MANUAL_SCALE
+
+    node      = SceneNode("emilia_skinned", position=list(position), rotation=list(rotation),
+                          scale=[scale, scale, scale])
+    node.mesh = skinned_mesh
+
+    texture = None
+    if smd.texture_path:
+        try:
+            texture = Texture(smd.texture_path)
+        except Exception as exc:
+            print(f"Failed to load Emilia texture {smd.texture_path}: {exc}")
+    node.texture = texture
+
+    return node, skinned_mesh, anim_controller
+
+
+def _load_skinned_marluxia(position=(0, 0, 0), rotation=(0, 180, 0)):
+    """Carrega marluxia_idle.glb como skinned mesh animado.
+    Usa o mesmo pipeline da Beatrice/AerialKnocker (NGC Beatrice, _is_beatrice=True).
+    Retorna (node, skinned_mesh, anim_controller) ou (None, None, None)."""
+    cache_key = MARLUXIA_GLB_PATH
+    if cache_key not in _MARLUXIA_SKINNED_CACHE:
+        try:
+            if not os.path.isfile(MARLUXIA_GLB_PATH):
+                _MARLUXIA_SKINNED_CACHE[cache_key] = None
+            else:
+                loader = GLTFLoader()
+                smd    = loader.load_merged(MARLUXIA_GLB_PATH)
+                if smd is None:
+                    raise ValueError("nenhuma primitive com skin encontrada")
+                smd._primitives = loader.last_primitives
+                if not smd.clips:
+                    raise ValueError("marluxia_idle.glb não contém animações")
+                real_clip = next(iter(smd.clips))
+                MARLUXIA_CLIP_NAMES["idle"] = real_clip
+                if not smd.texture_path:
+                    fallback = os.path.join(os.path.dirname(MARLUXIA_GLB_PATH), "tx_Marluxia_Base.png")
+                    smd.texture_path = fallback if os.path.isfile(fallback) else None
+                _MARLUXIA_SKINNED_CACHE[cache_key] = smd
+        except Exception as exc:
+            print(f"GLB load failed for Marluxia: {exc}")
+            _MARLUXIA_SKINNED_CACHE[cache_key] = None
+
+    smd = _MARLUXIA_SKINNED_CACHE[cache_key]
+    if smd is None:
+        return None, None, None
+
+    skinned_mesh             = SkinnedMesh(smd)
+    skinned_mesh._primitives = getattr(smd, '_primitives', None)
+    anim_controller          = AnimationController(smd.bones, smd.clips, clip_names=MARLUXIA_CLIP_NAMES)
+    anim_controller.play("idle")
+
+    auto_scale = getattr(smd, "_auto_scale", None)
+    if auto_scale is None:
+        bone_matrices = anim_controller.get_bone_matrices()
+        bm    = np.stack(bone_matrices, axis=0)
+        pos_h = np.concatenate([smd.vertices[:, :3],
+                                 np.ones((len(smd.vertices), 1), dtype=np.float32)], axis=1)
+        skinned_y = np.zeros(len(smd.vertices), dtype=np.float32)
+        for k in range(smd.joints.shape[1]):
+            joint_idx   = smd.joints[:, k].astype(np.int64)
+            w           = smd.weights[:, k]
+            transformed = np.einsum('nij,nj->ni', bm[joint_idx], pos_h)
+            skinned_y  += w * transformed[:, 1]
+        raw_height = float(skinned_y.max() - skinned_y.min()) if len(skinned_y) else 0.0
+        auto_scale = (MARLUXIA_TARGET_HEIGHT / raw_height) if raw_height > 1e-4 else 1.0
+        smd._auto_scale = auto_scale
+
+    node      = SceneNode("marluxia_skinned", position=list(position), rotation=list(rotation),
+                          scale=[auto_scale, auto_scale, auto_scale])
+    node.mesh = skinned_mesh
+
+    texture = None
+    if smd.texture_path:
+        try:
+            texture = Texture(smd.texture_path)
+        except Exception as exc:
+            print(f"Failed to load Marluxia texture {smd.texture_path}: {exc}")
+    node.texture = texture
+
+    return node, skinned_mesh, anim_controller
 
 
 def _load_skinned_heartless(position=(0, 0, 0), rotation=(0, 180, 0)):
@@ -792,6 +934,10 @@ class Game:
         self.beatrice_timer      = 0.0
         self.beatrice_skinned_mesh = None
         self.beatrice_anim         = None
+        self.emilia_skinned_mesh   = None
+        self.emilia_anim           = None
+        self.marluxia_skinned_mesh = None
+        self.marluxia_anim         = None
         self.rhythm_active       = False
         self.rhythm_beats        = []
         self.rhythm_score        = 0
@@ -831,6 +977,12 @@ class Game:
         if getattr(self, 'beatrice_skinned_mesh', None) is not None:
             self.beatrice_skinned_mesh.destroy()
             self.beatrice_skinned_mesh = None
+        if getattr(self, 'emilia_skinned_mesh', None) is not None:
+            self.emilia_skinned_mesh.destroy()
+            self.emilia_skinned_mesh = None
+        if getattr(self, 'marluxia_skinned_mesh', None) is not None:
+            self.marluxia_skinned_mesh.destroy()
+            self.marluxia_skinned_mesh = None
         # Destroi os skinned meshes de inimigos animados (Heartless / AerialKnocker)
         if hasattr(self, 'floor_state') and self.floor_state is not None:
             for e, _node in getattr(self.floor_state, 'enemies', []):
@@ -844,6 +996,8 @@ class Game:
         self.player_anim    = None
         self.player_node    = None
         self.beatrice_anim  = None
+        self.emilia_anim    = None
+        self.marluxia_anim  = None
         self.scene          = Scene()
         self.scene.set_aspect(self.screen_w / self.screen_h)
         self.floor_state    = FloorState()
@@ -1296,34 +1450,55 @@ class Game:
         self.scene.light.color         = np.array([1.0,0.5,1.0], dtype=np.float32)
         self.scene.light.intensity     = 1.5
 
-        # Emilia inconsciente ao fundo
-        emilia_node = _load_obj_model(
-            os.path.join(_HERE,"assets","models","Emilia","emilia.obj"),
-            position=(0,0.0,-12), rotation=(0,0,0), scale=(1.0,1.0,1.0)
+        # Emilia inconsciente ao fundo — tenta skinned mesh primeiro
+        em_pos = (3.5, EMILIA_Y_OFFSET, -10)   # afastada do pilar central, mais perto do centro
+        em_node, em_skinned, em_anim = _load_skinned_emilia(
+            position=em_pos, rotation=(0, 0, 0)  # deitada no chão (90° no eixo X)
         )
-        if emilia_node:
-            self.scene.add(emilia_node)
-        self.floor_state.emilia_node = emilia_node
+        if em_node is not None:
+            # Skinned: NÃO entra em scene.add() — renderizado por _render_skinned_emilia()
+            self.emilia_skinned_mesh = em_skinned
+            self.emilia_anim         = em_anim
+        else:
+            self.emilia_skinned_mesh = None
+            self.emilia_anim         = None
+            em_node = _load_obj_model(
+                os.path.join(_HERE, "assets", "models", "Emilia", "emilia.obj"),
+                position=em_pos, rotation=(0, 0, 0), scale=(1.0, 1.0, 1.0)
+            )
+            if em_node:
+                self.scene.add(em_node)
+        self.floor_state.emilia_node = em_node
 
-        # Marluxia (boss) – representado por heartless maior e roxo
-        boss_hp = 400; boss_level = 8
-        bv, bi = make_sphere(0.9,16,16)
-        bm = ProceduralMesh("marluxia",bv,bi, base_color=(0.7,0.1,0.8),
-                            ka=0.4,kd=0.7,ks=0.8,shininess=96)
-        boss_node = SceneNode("marluxia", mesh=bm, position=(0,1.5,-8), rotation=(0,0,0), scale=(1.0,1.0,1.0))
-        # Tenta carregar modelo do Marluxia se existir
-        m_path = os.path.join(_HERE,"assets","models","Marluxia","Marluxia.obj")
-        if os.path.exists(m_path):
-            try:
-                loaded = _load_obj_model(m_path, position=(0,0,-8), rotation=(90,0,0), scale=(0.014,0.014,0.014))
-            except Exception as exc:
-                print(f"Falha ao carregar Marluxia.obj, usando fallback: {exc}")
-                loaded = None
-            if loaded:
-                boss_node = loaded
+        # Marluxia (boss) — tenta skinned mesh primeiro
+        marl_pos = (0, MARLUXIA_Y_OFFSET, -8)
+        mk_node, mk_skinned, mk_anim = _load_skinned_marluxia(
+            position=marl_pos, rotation=(0, 180, 0)
+        )
+        if mk_node is not None:
+            boss_node = mk_node
+            self.marluxia_skinned_mesh = mk_skinned
+            self.marluxia_anim         = mk_anim
+        else:
+            self.marluxia_skinned_mesh = None
+            self.marluxia_anim         = None
+            # Fallback: .obj ou esfera roxa
+            bv, bi = make_sphere(0.9, 16, 16)
+            bm = ProceduralMesh("marluxia", bv, bi, base_color=(0.7, 0.1, 0.8),
+                                ka=0.4, kd=0.7, ks=0.8, shininess=96)
+            boss_node = SceneNode("marluxia", mesh=bm, position=list(marl_pos))
+            m_path = os.path.join(_HERE, "assets", "models", "Marluxia", "Marluxia.obj")
+            if os.path.exists(m_path):
+                try:
+                    loaded = _load_obj_model(m_path, position=(0, 0, -8), rotation=(90, 0, 0), scale=(0.014, 0.014, 0.014))
+                except Exception as exc:
+                    print(f"Falha ao carregar Marluxia.obj, usando fallback: {exc}")
+                    loaded = None
+                if loaded:
+                    boss_node = loaded
+            self.scene.add(boss_node)
 
-        self.scene.add(boss_node)
-        boss_enemy = Enemy("Marluxia", level=8, world_pos=[0.0,0.0,-8.0])
+        boss_enemy = Enemy("Marluxia", level=8, world_pos=[0.0, 0.0, -8.0])
         boss_enemy.stats.max_hp  = 400
         boss_enemy.stats.hp      = 400
         boss_enemy.stats.atk     = 22
@@ -1331,19 +1506,23 @@ class Game:
         boss_enemy.aggro_range   = 12.0
         boss_enemy.attack_range  = 2.2
         boss_enemy.respawns_left = 0
-        boss_enemy.spawn_pos     = [0.0,0.0,-8.0]
+        boss_enemy.spawn_pos     = [0.0, 0.0, -8.0]
+        boss_enemy._skinned_mesh = mk_skinned
+        boss_enemy._anim         = mk_anim
+        boss_enemy._anim_state   = None
+        boss_enemy._y_offset     = MARLUXIA_Y_OFFSET
         self.floor_state.boss      = boss_enemy
         self.floor_state.boss_node = boss_node
         self.floor_state.enemies   = [(boss_enemy, boss_node)]
 
-        _add_tower_deco(self.scene, self.floor_state, "tower",    position=(0.0, 0.0, -13.5), scale=(1.0,1.0,1.0), collision_radius=1.8)
-        for cx, cz in [(-8.5,-5.0),(8.5,-5.0),(-8.5,5.0),(8.5,5.0)]:
-            _add_tower_deco(self.scene, self.floor_state, "crystal", position=(cx, 0.0, cz), scale=(1.4,1.4,1.4), collision_radius=1.0)
+        _add_tower_deco(self.scene, self.floor_state, "tower",    position=(0.0, 0.0, -13.5), scale=(1.0, 1.0, 1.0), collision_radius=1.8)
+        for cx, cz in [(-8.5, -5.0), (8.5, -5.0), (-8.5, 5.0), (8.5, 5.0)]:
+            _add_tower_deco(self.scene, self.floor_state, "crystal", position=(cx, 0.0, cz), scale=(1.4, 1.4, 1.4), collision_radius=1.0)
         for px in (-8.5, 8.5):
-            _add_tower_deco(self.scene, self.floor_state, "platform", position=(px, 0.0, 0.0), scale=(1.0,1.0,1.0), collision_radius=1.2)
+            _add_tower_deco(self.scene, self.floor_state, "platform", position=(px, 0.0, 0.0), scale=(1.0, 1.0, 1.0), collision_radius=1.2)
 
-        self.hud.add_popup("BOSS: MARLUXIA", 3.0, (255,80,255))
-        self.hud.add_popup("Salve Emilia!", 3.5, (255,200,255))
+        self.hud.add_popup("BOSS: MARLUXIA", 3.0, (255, 80, 255))
+        self.hud.add_popup("Salve Emilia!", 3.5, (255, 200, 255))
 
     # ── Story / Cutscene ─────────────────────────────────────────────────────
 
@@ -1911,6 +2090,12 @@ class Game:
         if self.beatrice_anim is not None and self.beatrice_node is not None and self.beatrice_node.visible:
             self.beatrice_anim.update(dt)
 
+        # Avança a animação idle da Emilia na sala do boss
+        emilia_anim = getattr(self, 'emilia_anim', None)
+        emilia_node = getattr(self.floor_state, 'emilia_node', None)
+        if emilia_anim is not None and emilia_node is not None and getattr(emilia_node, 'visible', True):
+            emilia_anim.update(dt)
+
     def _update_fade(self, dt):
         half = self._fade_duration
         if not self._fade_in:
@@ -2283,6 +2468,7 @@ class Game:
         self.scene.draw(self.phong_shader, self.camera)
         self._render_skinned_player()
         self._render_skinned_beatrice()
+        self._render_skinned_emilia()
         self._render_enemy_skinned_meshes()
         glDisable(GL_DEPTH_TEST)
         self._draw_hud()
@@ -2305,6 +2491,17 @@ class Game:
         if self.beatrice_node is None or not self.beatrice_node.visible:
             return
         self._render_skinned(self.beatrice_node, self.beatrice_skinned_mesh, self.beatrice_anim)
+
+    def _render_skinned_emilia(self):
+        """Desenha a Emilia inconsciente na sala do boss (skinned mesh)."""
+        emilia_anim  = getattr(self, 'emilia_anim',  None)
+        emilia_mesh  = getattr(self, 'emilia_skinned_mesh', None)
+        emilia_node  = getattr(self.floor_state, 'emilia_node', None)
+        if emilia_anim is None or emilia_mesh is None or emilia_node is None:
+            return
+        if not getattr(emilia_node, 'visible', True):
+            return
+        self._render_skinned(emilia_node, emilia_mesh, emilia_anim)
 
     def _render_enemy_skinned_meshes(self):
         """Desenha todos os inimigos que foram carregados como skinned mesh
