@@ -1,46 +1,90 @@
-# Blender MTL File: ''
-# Material Count: 4
-newmtl default_material_texture000.png
-Ns 96.078431
-Ka 0.000000 0.000000 0.000000
+# Blender MTL File: 'None'
+# Material Count: 8
+
+newmtl NDS_Material.1768
+Ns 225.000000
+Ka 1.000000 1.000000 1.000000
 Kd 0.800000 0.800000 0.800000
-Ks 0.235294 0.235294 0.235294
-Ni 1.000000
+Ks 0.000000 0.000000 0.000000
+Ke 0.000000 0.000000 0.000000
+Ni 1.450000
 d 1.000000
-illum 2
-map_Kd texture000.png
+illum 1
+map_Kd Marluxia_clothes.png
 
-
-newmtl default_material_texture001.png
-Ns 96.078431
-Ka 0.000000 0.000000 0.000000
+newmtl NDS_Material.1769
+Ns 225.000000
+Ka 1.000000 1.000000 1.000000
 Kd 0.800000 0.800000 0.800000
-Ks 0.235294 0.235294 0.235294
-Ni 1.000000
+Ks 0.000000 0.000000 0.000000
+Ke 0.000000 0.000000 0.000000
+Ni 1.450000
 d 1.000000
-illum 2
-map_Kd texture001.png
+illum 1
+map_Kd Marluxia_clothes2.png
 
-
-newmtl default_material_texture002.png
-Ns 96.078431
-Ka 0.000000 0.000000 0.000000
+newmtl NDS_Material.1770
+Ns 225.000000
+Ka 1.000000 1.000000 1.000000
 Kd 0.800000 0.800000 0.800000
-Ks 0.235294 0.235294 0.235294
-Ni 1.000000
+Ks 0.000000 0.000000 0.000000
+Ke 0.000000 0.000000 0.000000
+Ni 1.450000
 d 1.000000
-illum 2
-map_Kd texture002.png
+illum 1
+map_Kd Marluxia_clothes3.png
 
-
-newmtl default_material_texture003.png
-Ns 96.078431
-Ka 0.000000 0.000000 0.000000
+newmtl NDS_Material.1771
+Ns 225.000000
+Ka 1.000000 1.000000 1.000000
 Kd 0.800000 0.800000 0.800000
-Ks 0.235294 0.235294 0.235294
-Ni 1.000000
+Ks 0.000000 0.000000 0.000000
+Ke 0.000000 0.000000 0.000000
+Ni 1.450000
 d 1.000000
-illum 2
-map_Kd texture003.png
+illum 1
+map_Kd Marluxia_hair.png
 
+newmtl NDS_Material.1772
+Ns 225.000000
+Ka 1.000000 1.000000 1.000000
+Kd 0.800000 0.800000 0.800000
+Ks 0.000000 0.000000 0.000000
+Ke 0.000000 0.000000 0.000000
+Ni 1.450000
+d 1.000000
+illum 1
+map_Kd Marluxia_hair2.png
 
+newmtl NDS_Material.1773
+Ns 225.000000
+Ka 1.000000 1.000000 1.000000
+Kd 0.800000 0.800000 0.800000
+Ks 0.000000 0.000000 0.000000
+Ke 0.000000 0.000000 0.000000
+Ni 1.450000
+d 1.000000
+illum 1
+map_Kd Marluxia_face.png
+
+newmtl NDS_Material.1774
+Ns 225.000000
+Ka 1.000000 1.000000 1.000000
+Kd 0.800000 0.800000 0.800000
+Ks 0.000000 0.000000 0.000000
+Ke 0.000000 0.000000 0.000000
+Ni 1.450000
+d 1.000000
+illum 1
+map_Kd Marluxia_hair3.png
+
+newmtl NDS_Material.1775
+Ns 225.000000
+Ka 1.000000 1.000000 1.000000
+Kd 0.800000 0.800000 0.800000
+Ks 0.000000 0.000000 0.000000
+Ke 0.000000 0.000000 0.000000
+Ni 1.450000
+d 1.000000
+illum 1
+map_Kd Marluxia_clothes.png

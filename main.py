@@ -911,8 +911,8 @@ class Game:
 
 
         # Escada no fundo (atrás da barreira)
-        _build_stairs(self.scene, self.floor_state)
-        self.floor_state.stair_locked = True
+        # _build_stairs(self.scene, self.floor_state)
+        # self.floor_state.stair_locked = True
 
 
         # Decoração: obeliscos encostados nas paredes laterais (x=±8.5, fora da área de passagem)
@@ -1626,6 +1626,8 @@ class Game:
             self._update_rhythm(dt)
         if self.game_mode not in ("explore","rhythm"): return
         self._update_player(dt)
+        if self.player_anim is not None:
+            self.player_anim.update(dt)
         self._update_enemies(dt)
         self.hud.update(dt)
         if self.beatrice_node is not None and self.beatrice_timer > 0.0:
@@ -1725,6 +1727,8 @@ class Game:
         ):
             p.velocity[1] = p.JUMP_FORCE
             p.on_ground = False
+            if self.player_anim is not None:
+                self.player_anim.play("jumping", restart_if_same=True)
 
 
     def _update_player_input(self, dt):
@@ -1767,6 +1771,12 @@ class Game:
         self.move_x = move_x
         self.move_z = move_z
         self.move_mag = mag
+
+        if self.player_anim is not None and not self.player_anim.is_one_shot_active():
+            if not p.on_ground:
+                self.player_anim.play("jumping")
+            else:
+                self.player_anim.play("walking" if mag > 0 else "idle")
 
     def _move_player_horizontal(self, dt):
 
