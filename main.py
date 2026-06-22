@@ -35,8 +35,7 @@ from OpenGL.GL import (
     GL_FRONT_AND_BACK, GL_FILL, GL_LINE,
 )
 import numpy as np
-
-_HERE = os.path.dirname(os.path.abspath(__file__))
+from config import _HERE
 sys.path.insert(0, _HERE)
 
 from engine.math3d        import vec3
@@ -58,6 +57,7 @@ from engine.math3d        import mat3_normal_matrix
 from game.rpg_data        import Player, Stats, Enemy, SPELL_DB, SPELL_LIST, ITEM_DB
 from hud                  import HUD
 from menu                 import Menu, MenuItem, MenuManager
+from engine.sound_effects import SoundEffect, Effects
 
 SCREEN_W, SCREEN_H = 1280, 720
 TITLE      = "Torre de Plêiades – Re:Zero RPG"
@@ -539,7 +539,7 @@ class FloorState:
         # Corredor final
         self.gauntlet_waves  = []
         self.gauntlet_idx    = 0
-
+import time
 
 class Game:
     FLOOR_ENTRY    = 0
@@ -560,9 +560,11 @@ class Game:
 
     def _init_window(self):
         pygame.init(); pygame.font.init()
+        pygame.mixer.set_num_channels(32)
         pygame.mixer.music.load(os.path.join(_HERE, "assets", "music", "trilha.mp3"))
         pygame.mixer.music.set_volume(0.2)
         pygame.mixer.music.play(-1)
+        self.sounds = Effects()
         pygame.display.set_mode((SCREEN_W, SCREEN_H), DOUBLEBUF|OPENGL|RESIZABLE)
         pygame.display.set_caption(TITLE)
         self.screen_w = SCREEN_W; self.screen_h = SCREEN_H
@@ -1330,6 +1332,8 @@ class Game:
     # ── Player attack (real-time) ─────────────────────────────────────────────
 
     def _player_melee_attack(self):
+        self.sounds.attack_sfx.play()
+
         p = self.player
         if p.attack_cd > 0: return
         p.is_attacking = True; p.attack_timer = 0.4; p.attack_cd = 0.6
@@ -1767,21 +1771,27 @@ class Game:
         fwd = self.camera.flat_forward
         rgt = self.camera.flat_right
 
+        moving = False
+
         if "w" in keys:
             move_x += fwd[0]
             move_z += fwd[2]
+            moving = True
 
         if "s" in keys:
             move_x -= fwd[0]
             move_z -= fwd[2]
+            moving = True
 
         if "a" in keys:
             move_x -= rgt[0]
             move_z -= rgt[2]
+            moving = True
 
         if "d" in keys:
             move_x += rgt[0]
             move_z += rgt[2]
+            moving = True
 
         mag = math.sqrt(move_x * move_x + move_z * move_z)
 
@@ -1802,6 +1812,14 @@ class Game:
                 self.player_anim.play("jumping")
             else:
                 self.player_anim.play("walking" if mag > 0 else "idle")
+
+        if moving and p.on_ground:
+
+            if not self.sounds.walk_sfx.is_playing():
+                self.sounds.walk_sfx.play(loops=-1)
+
+        else:
+            self.sounds.walk_sfx.stop()
 
     def _move_player_horizontal(self, dt):
 
@@ -1984,6 +2002,7 @@ class Game:
                 if math.sqrt(dx*dx+dz*dz) < e.attack_range:
                     dmg = e.try_attack(self.player.stats)
                     if dmg > 0:
+                        self.sounds.hit_sfx.play()
                         self.player.invincible = 0.5
                         self.player.is_taking_damage = True
                         self.player.reaction_timer = self.player.REACTION_TIME
