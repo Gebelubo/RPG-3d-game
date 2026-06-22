@@ -561,7 +561,7 @@ class Game:
     def _init_window(self):
         pygame.init(); pygame.font.init()
         pygame.mixer.set_num_channels(32)
-        pygame.mixer.music.load(os.path.join(_HERE, "assets", "music", "trilha.mp3"))
+        pygame.mixer.music.load(os.path.join(_HERE, "assets", "music", "menu.mp3"))
         pygame.mixer.music.set_volume(0.2)
         pygame.mixer.music.play(-1)
         self.sounds = Effects()
@@ -888,6 +888,9 @@ class Game:
             self._start_story_part2()
 
     def _build_floor_entry(self):
+        pygame.mixer.music.stop()
+        pygame.mixer.music.load(os.path.join(_HERE, "assets", "music", "tower.mp3"))
+        pygame.mixer.music.play()
         self._build_room(floor_color=(0.12,0.10,0.18), wall_color=(0.18,0.14,0.26))
         self._place_player(pos=(0,2,12))
 
@@ -932,6 +935,9 @@ class Game:
 
 
     def _build_floor_puzzle(self):
+        pygame.mixer.music.stop()
+        pygame.mixer.music.load(os.path.join(_HERE, "assets", "music", "puzzle.mp3"))
+        pygame.mixer.music.play()
         self._build_room(floor_color=(0.18,0.16,0.28), wall_color=(0.26,0.20,0.38))
         self._place_player(pos=(0,0,12))
 
@@ -1009,6 +1015,9 @@ class Game:
         self.hud.add_popup("[Espaço] pra pular e alcançá-los!", 4.0, (200,200,255))
 
     def _build_floor_rhythm(self):
+        pygame.mixer.music.stop()
+        pygame.mixer.music.load(os.path.join(_HERE, "assets", "music", "rythm.mp3"))
+        pygame.mixer.music.play()
         self._build_room(floor_color=(0.10,0.18,0.20), wall_color=(0.16,0.26,0.30))
         self._place_player(pos=(0,0,12))
 
@@ -1034,6 +1043,9 @@ class Game:
         self.hud.add_popup("[Z] quando chegar na barra 'amarela'!", 4.0, (200,255,220))
 
     def _build_floor_gauntlet(self):
+        pygame.mixer.music.stop()
+        pygame.mixer.music.load(os.path.join(_HERE, "assets", "music", "combat.mp3"))
+        pygame.mixer.music.play()
         self._build_room(floor_color=(0.20,0.08,0.08), wall_color=(0.28,0.12,0.12))
         self._place_player(pos=(0,0,12))
 
@@ -1059,6 +1071,9 @@ class Game:
         self.hud.add_popup("Corredor Final! Sobreviva!", 3.0, (255,100,100))
 
     def _build_floor_rest(self):
+        pygame.mixer.music.stop()
+        pygame.mixer.music.load(os.path.join(_HERE, "assets", "music", "tower.mp3"))
+        pygame.mixer.music.play()
         self._build_room(floor_color=(0.15,0.22,0.18), wall_color=(0.20,0.30,0.24), ceil_color=(0.12,0.20,0.16))
         self._place_player(pos=(0,0,8))
         self.scene.add(SceneNode("altar_rest", mesh=make_box_mesh("altar_rest",4.0,0.5,2.0, color=(0.4,0.6,0.5)), position=(0,0.25,0)))
@@ -1170,6 +1185,9 @@ class Game:
         ], callback=self._start_credits)
 
     def _start_credits(self):
+        pygame.mixer.music.stop()
+        pygame.mixer.music.load(os.path.join(_HERE, "assets", "music", "credits.mp3"))
+        pygame.mixer.music.play()
         self.credits_active = True
         self.credits_timer  = 0.0
         self.credits_y      = self.screen_h + 20
