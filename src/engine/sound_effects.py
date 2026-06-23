@@ -1,4 +1,4 @@
-from config import _HERE
+from src.here import _HERE
 import os
 import pygame
     

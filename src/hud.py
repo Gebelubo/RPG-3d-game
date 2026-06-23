@@ -27,8 +27,8 @@ from OpenGL.GL import (
     GL_TEXTURE_WRAP_S, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE,
     GL_BLEND, GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA, GL_TEXTURE0,
 )
-from engine.math3d import ortho, identity
-from engine.shader import ShaderProgram
+from src.engine.math3d import ortho, identity
+from src.engine.shader import ShaderProgram
 
 # ── Font cache ────────────────────────────────────────────────────────────────
 
@@ -308,7 +308,7 @@ class HUD:
         self.draw_rect(px, py, pw, ph, (0.05, 0.05, 0.18))
         self.draw_rect(px, py, pw, 2, (0.3, 0.3, 0.7))
         self.draw_text("── MAGIA ──", px + 8, py + 6, 14, (160, 160, 255), bold=True)
-        from game.rpg_data import SPELL_DB, SPELL_LIST
+        from src.game.rpg_data import SPELL_DB, SPELL_LIST
         for i, sid in enumerate(SPELL_LIST):
             sp = SPELL_DB[sid]
             iy = py + 30 + i * 44
@@ -419,7 +419,7 @@ class HUD:
         if self.spell_menu_open:
             px = 8 + 1 * (bs + pad)
             py = sh - bs - pad - ph - 8
-            from game.rpg_data import SPELL_LIST
+            from src.game.rpg_data import SPELL_LIST
             for i, sid in enumerate(SPELL_LIST):
                 iy = py + 30 + i * 38
                 if px <= mx <= px + 240 and iy <= my <= iy + 28:
