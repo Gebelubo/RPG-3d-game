@@ -862,6 +862,9 @@ class FloorState:
         self.obstacles: list[Hitbox] = []
         self.combat_wave     = 0    # qual onda de combate estamos
         self.all_clear       = False
+        # ── Puzzle extras ──────────────────────────────────────────────────
+        self.puzzle_guards:   list = []   # list[(Enemy, node)] guardando peça 1
+        self.push_box         = None      # dict com estado da caixa empurrável
         # Boss
         self.boss            = None
         self.boss_node       = None
@@ -1296,43 +1299,109 @@ class Game:
         frame_w, frame_h = 4.0, 2.25
         frame_cx, frame_cy = 0.0, ROOM_H/2 + 0.4
         fv, fi = make_plane(frame_w + 0.3, frame_h + 0.3, 1)
-        self.scene.add(SceneNode("puzzle_frame", mesh=ProceduralMesh("puzzle_frame", fv, fi, base_color=(0.45,0.35,0.10), ka=0.6, kd=0.5, ks=0.6, shininess=32),
-                                  position=(frame_cx, frame_cy, -8.92), rotation=(90,0,0)))
+        self.scene.add(SceneNode("puzzle_frame",
+            mesh=ProceduralMesh("puzzle_frame", fv, fi,
+                base_color=(0.45,0.35,0.10), ka=0.6, kd=0.5, ks=0.6, shininess=32),
+            position=(frame_cx, frame_cy, -8.92), rotation=(90,0,0)))
         bv, bi = make_plane(frame_w, frame_h, 1)
-        self.scene.add(SceneNode("puzzle_backing", mesh=ProceduralMesh("puzzle_backing", bv, bi, base_color=(0.05,0.05,0.08), ka=0.5, kd=0.3, ks=0.0, shininess=1),
-                                  position=(frame_cx, frame_cy, -8.91), rotation=(90,0,0)))
+        self.scene.add(SceneNode("puzzle_backing",
+            mesh=ProceduralMesh("puzzle_backing", bv, bi,
+                base_color=(0.05,0.05,0.08), ka=0.5, kd=0.3, ks=0.0, shininess=1),
+            position=(frame_cx, frame_cy, -8.91), rotation=(90,0,0)))
 
         _add_tower_deco(self.scene, self.floor_state, "platform",
                         position=(7.0, 1.0, 0.0), scale=(0.8, 0.8, 0.8),
                         collision_radius=1.5)
-        
         _add_tower_deco(self.scene, self.floor_state, "platform",
                         position=(9.0, 4.0, -5.0), scale=(0.2, 0.2, 0.2),
                         collision_radius=1.5)
-
         _add_tower_deco(self.scene, self.floor_state, "platform",
                         position=(5.0, 3.0, -3.0), scale=(0.2, 0.2, 0.2),
                         collision_radius=1.5)
-
         _add_tower_deco(self.scene, self.floor_state, "platform",
-                position=(5.5, 5.0, -7.0), scale=(0.8, 0.2, 0.8),
-                collision_radius=1.5)
+                        position=(5.5, 5.0, -7.0), scale=(0.8, 0.2, 0.8),
+                        collision_radius=1.5)
 
-        piece_w, piece_h   = frame_w/2, frame_h/2
-        pv, pi             = make_plane(piece_w, piece_h, 1)
-        scatter_positions  = [(-4,1.4,-2),(5.5,6,-7),(-4,1.4,2),(4,1.4,2)]
-        mural_offsets      = [(-piece_w/2, piece_h/2),(piece_w/2, piece_h/2),(-piece_w/2,-piece_h/2),(piece_w/2,-piece_h/2)]
-        img_dir            = os.path.join(_HERE, "assets", "images", "puzzle")
+        piece_w, piece_h  = frame_w / 2, frame_h / 2
+        pv, pi            = make_plane(piece_w, piece_h, 1)
+        # Layout das peças:
+        #   idx 0 → livre       (-4,  1.4, -2)
+        #   idx 1 → livre/pkr   ( 5.5, 6,  -7)  plataforma de parkour, sem bloqueio
+        #   idx 2 → caixa       (-5.5, 0.5, 4)  bloqueada até botão ser ativado
+        #   idx 3 → heartless   ( 4,  1.4,  2)  bloqueada até 3 guardas morrerem
+        scatter_positions = [(-4, 1.4, -2), (5.5, 6, -7), (-5.5, 0.5, 4), (4, 1.4, 2)]
+        mural_offsets     = [
+            (-piece_w/2,  piece_h/2),
+            ( piece_w/2,  piece_h/2),
+            (-piece_w/2, -piece_h/2),
+            ( piece_w/2, -piece_h/2),
+        ]
+        img_dir = os.path.join(_HERE, "assets", "images", "puzzle")
 
         self.puzzle_pieces = []
         for idx, spos in enumerate(scatter_positions):
             tex   = Texture(os.path.join(img_dir, f"piece_{idx}.png"))
-            pm    = ProceduralMesh(f"puzzle_piece_{idx}", pv, pi, base_color=(1,1,1), ka=0.9, kd=0.6, ks=0.1, shininess=8)
-            pnode = SceneNode(f"puzzle_piece_{idx}", mesh=pm, texture=tex, position=list(spos), rotation=(90,0,0))
+            pm    = ProceduralMesh(f"puzzle_piece_{idx}", pv, pi,
+                                   base_color=(1,1,1), ka=0.9, kd=0.6, ks=0.1, shininess=8)
+            pnode = SceneNode(f"puzzle_piece_{idx}", mesh=pm, texture=tex,
+                              position=list(spos), rotation=(90,0,0))
             self.scene.add(pnode)
-            mural_pos = (frame_cx + mural_offsets[idx][0], frame_cy + mural_offsets[idx][1], -8.9)
-            self.puzzle_pieces.append({"node": pnode, "collected": False, "scatter_pos": spos, "mural_pos": mural_pos})
+            mural_pos = (frame_cx + mural_offsets[idx][0],
+                         frame_cy + mural_offsets[idx][1], -8.9)
+            self.puzzle_pieces.append({
+                "node": pnode, "collected": False,
+                "scatter_pos": spos, "mural_pos": mural_pos,
+            })
         self.floor_state.puzzle_solved = False
+
+        # ── Heartless guardando a peça 3 (4, 1.4, 2) ──────────────────────
+        # 3 heartless estacionários em triângulo ao redor da peça.
+        # A peça só pode ser coletada depois que TODOS os 3 morrerem.
+        guard_spawns = [(2.8, 0.5, 1.2), (4.0, 0.5, 3.2), (5.2, 0.5, 1.2)]
+        self.floor_state.puzzle_guards = []
+        for gpos in guard_spawns:
+            ge, gn = _spawn_heartless(self.scene, gpos, level=3, stationary=True)
+            ge.respawns_left = 0
+            ge.aggro_range   = 4.0
+            self.floor_state.puzzle_guards.append((ge, gn))
+            self.floor_state.enemies.append((ge, gn))
+
+        # ── Caixa empurrável + botão (peça 2) ─────────────────────────────
+        
+        BOX_START  = [-9.0, 0.5, 4.0]
+        BTN_POS    = (-5.5, 0.02, 4.0)
+        BTN_RADIUS = 0.9
+
+        bv2, bi2 = make_cube(1.0)
+        box_mesh = ProceduralMesh("push_box", bv2, bi2,
+                                  base_color=(0.55, 0.38, 0.18),
+                                  ka=0.3, kd=0.8, ks=0.2, shininess=12)
+        try:
+            box_tex = Texture(os.path.join(_HERE, "assets", "models", "tower", "darkwood.jpg"))
+        except Exception:
+            box_tex = None
+        box_node = SceneNode("push_box", mesh=box_mesh, texture=box_tex,
+                             position=list(BOX_START), scale=[1.0, 1.0, 1.0])
+        self.scene.add(box_node)
+
+        btnv, btni = make_plane(BTN_RADIUS * 2, BTN_RADIUS * 2, 1)
+        btn_mesh   = ProceduralMesh("push_btn", btnv, btni,
+                                    base_color=(0.15, 0.70, 0.20),
+                                    ka=0.5, kd=0.7, ks=0.1, shininess=4)
+        btn_node   = SceneNode("push_btn", mesh=btn_mesh, position=list(BTN_POS))
+        self.scene.add(btn_node)
+
+        self.floor_state.push_box = {
+            "node":       box_node,
+            "pos":        [BOX_START[0], BOX_START[2]],  # [x, z] – Y é fixo
+            "velocity":   [0.0, 0.0],                    # [vx, vz]
+            "btn_pos":    (BTN_POS[0], BTN_POS[2]),      # (x, z)
+            "btn_radius": BTN_RADIUS,
+            "btn_node":   btn_node,
+            "activated":  False,
+            "piece_idx":  2,
+            "hit_count":  0,
+        }
 
         _build_stairs(self.scene, self.floor_state)
         gm = make_box_mesh("gate", 3.2, 2.0, 0.3, color=(0.5,0.4,0.1))
@@ -1342,7 +1411,8 @@ class Game:
 
         self.hud.add_popup("Junte os fragmentos espalhados pela sala!", 3.0, (200,220,255))
         self.hud.add_popup("[Z] perto de cada fragmento para encaixá-lo no quadro", 4.0, (180,180,220))
-
+        self.hud.add_popup("Heartless guardam um fragmento — derrote-os primeiro!", 4.5, (255,180,100))
+        self.hud.add_popup("Empurre a caixa [Z] até o botão verde!", 5.5, (180,255,160))
     def _build_floor_aerial(self):
         pygame.mixer.music.stop()
         pygame.mixer.music.load(os.path.join(_HERE, "assets", "music", "combat.mp3"))
@@ -1777,40 +1847,75 @@ class Game:
             self.hud.add_popup("Swoosh!", 0.6, (200,200,200))
 
     def _try_activate_orb(self):
-        p = self.player
+        """Tenta coletar/encaixar um fragmento do puzzle.
 
-        for piece in self.puzzle_pieces:
+        Regras:
+          • idx=2 – bloqueada até a caixa ativar o botão verde.
+          • idx=3 – bloqueada até os 3 heartless guardas morrerem.
+          • Qualquer peça – só coleta se estiver a ≤2u de distância.
+          • Soco em caixa – se player está a ≤1.8u da caixa, aplica impulso.
+        """
+        p  = self.player
+        fs = self.floor_state
 
+        # ── Tentar empurrar a caixa ───────────────────────────────────────
+        pb = getattr(fs, "push_box", None)
+        if pb and not pb["activated"]:
+            bx, bz = pb["pos"][0], pb["pos"][1]
+            dx = bx - p.world_pos[0]
+            dz = bz - p.world_pos[2]
+            dist_box = math.sqrt(dx*dx + dz*dz)
+            if dist_box < 1.8:
+                IMPULSE = 3.5
+                norm = dist_box if dist_box > 1e-4 else 1.0
+                pb["velocity"][0] += (dx / norm) * IMPULSE
+                pb["velocity"][1] += (dz / norm) * IMPULSE
+                pb["hit_count"]   += 1
+                self.hud.add_popup(
+                    f"Caixa empurrada! (soco {pb['hit_count']})",
+                    0.7, (200, 200, 120)
+                )
+                return
+
+        # ── Tentar coletar um fragmento ───────────────────────────────────
+        for idx, piece in enumerate(self.puzzle_pieces):
             if piece["collected"]:
                 continue
 
             spos = piece["scatter_pos"]
+            dx   = spos[0] - p.world_pos[0]
+            dy   = spos[1] - p.world_pos[1]
+            dz   = spos[2] - p.world_pos[2]
+            dist = math.sqrt(dx*dx + dy*dy + dz*dz)
 
-            dx = spos[0] - p.world_pos[0]
-            dy = spos[1] - p.world_pos[1]
-            dz = spos[2] - p.world_pos[2]
+            if dist >= 2.0:
+                continue
 
-            dist = math.sqrt(
-                dx*dx +
-                dy*dy +
-                dz*dz
-            )
+            # Peça 2 → bloqueada pelo botão da caixa
+            if idx == 2:
+                if pb and not pb["activated"]:
+                    self.hud.add_popup(
+                        "Empurre a caixa até o botão verde!",
+                        1.5, (200, 255, 160)
+                    )
+                    return
 
-            if dist < 2.0:
-                piece["collected"] = True
-                mpos = list(piece["mural_pos"])
-                mpos[2] += 0.00 
-                piece["node"].position = mpos
+            # Peça 3 → bloqueada pelos heartless guardas
+            if idx == 3:
+                guards = getattr(fs, "puzzle_guards", [])
+                if any(not ge.dead for ge, _gn in guards):
+                    self.hud.add_popup(
+                        "Guardas vivos! Derrote os Heartless primeiro.",
+                        1.8, (255, 120, 80)
+                    )
+                    return
 
-                self.hud.add_popup(
-                    "Fragmento encaixado!",
-                    1.5,
-                    (200,200,100)
-                )
-
-                self._check_puzzle()
-                return
-
+            # Coletar
+            piece["collected"] = True
+            piece["node"].position = list(piece["mural_pos"])
+            self.hud.add_popup("Fragmento encaixado!", 1.5, (200, 200, 100))
+            self._check_puzzle()
+            return
     def _check_puzzle(self):
         if all(p["collected"] for p in self.puzzle_pieces):
             self.floor_state.puzzle_solved = True
@@ -2410,8 +2515,68 @@ class Game:
 
         self._resolve_enemy_collisions()
 
+        self._update_push_box(dt)
         self._update_player_visuals()
                 
+    def _update_push_box(self, dt):
+        """Física simples da caixa empurrável no andar de puzzle."""
+        if self.current_floor != self.FLOOR_PUZZLE:
+            return
+        pb = getattr(self.floor_state, "push_box", None)
+        if pb is None or pb["activated"]:
+            return
+
+        FRICTION = 5.0    # desaceleração (m/s²)
+        BOX_Y    = 0.5    # altura fixa (metade da caixa)
+        ROOM_HW  = ROOM_W / 2 - 0.8
+        ROOM_HD  = ROOM_D / 2 - 0.8
+
+        vx, vz = pb["velocity"]
+
+        # Fricção
+        speed = math.sqrt(vx*vx + vz*vz)
+        if speed > 0.0:
+            decel = min(FRICTION * dt, speed)
+            pb["velocity"][0] -= (vx / speed) * decel
+            pb["velocity"][1] -= (vz / speed) * decel
+            vx, vz = pb["velocity"]
+
+        # Mover
+        pb["pos"][0] += vx * dt
+        pb["pos"][1] += vz * dt
+
+        # Limites da sala
+        pb["pos"][0] = max(-ROOM_HW, min(ROOM_HW, pb["pos"][0]))
+        pb["pos"][1] = max(-ROOM_HD, min(ROOM_HD, pb["pos"][1]))
+
+        # Atualiza SceneNode
+        pb["node"].position = [pb["pos"][0], BOX_Y, pb["pos"][1]]
+
+        # Colisão player ↔ caixa (empurra player para fora – AABB vs círculo)
+        BOX_HALF = 0.6
+        PLAYER_R = 0.5
+        px, _py, pz = self.player.world_pos
+        bx, bz      = pb["pos"][0], pb["pos"][1]
+        nx = max(bx - BOX_HALF, min(px, bx + BOX_HALF))
+        nz = max(bz - BOX_HALF, min(pz, bz + BOX_HALF))
+        ddx = px - nx; ddz = pz - nz
+        dist2 = ddx*ddx + ddz*ddz
+        if dist2 < PLAYER_R * PLAYER_R and dist2 > 1e-8:
+            dist = math.sqrt(dist2)
+            push = (PLAYER_R - dist) / dist
+            self.player.world_pos[0] += ddx * push
+            self.player.world_pos[2] += ddz * push
+
+        # Checa se a caixa chegou no botão
+        btnx, btnz = pb["btn_pos"]
+        ddx2 = pb["pos"][0] - btnx
+        ddz2 = pb["pos"][1] - btnz
+        if math.sqrt(ddx2*ddx2 + ddz2*ddz2) < pb["btn_radius"]:
+            pb["activated"]              = True
+            pb["velocity"]               = [0.0, 0.0]
+            pb["btn_node"].mesh.base_color = (0.85, 1.0, 0.15)  # botão fica amarelo
+            self.hud.add_popup("Botão ativado! Fragmento liberado!", 2.5, (180, 255, 120))
+
     def _update_enemies(self, dt):
         for e, node in self.floor_state.enemies:
             if e.dead: continue
