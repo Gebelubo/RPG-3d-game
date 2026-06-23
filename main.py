@@ -865,6 +865,8 @@ class FloorState:
         # ── Puzzle extras ──────────────────────────────────────────────────
         self.puzzle_guards:   list = []   # list[(Enemy, node)] guardando peça 1
         self.push_box         = None      # dict com estado da caixa empurrável
+        self.in_parkour_room  = False     # True enquanto sub-sala parkour ativa
+        self.parkour_pieces_state = []    # snapshot de collected p/ restaurar
         # Boss
         self.boss            = None
         self.boss_node       = None
@@ -932,6 +934,8 @@ class Game:
         self.player_node         = None
         self.player_skinned_mesh = None
         self.player_anim         = None
+        self._parkour_snapshot   = None
+        self.void_fall_timer     = None
         self.player_texture      = None
         self.beatrice_node       = None
         self.beatrice_timer      = 0.0
@@ -1247,7 +1251,7 @@ class Game:
         pygame.mixer.music.load(os.path.join(_HERE, "assets", "music", "tower.mp3"))
         pygame.mixer.music.play()
         self._build_room(floor_color=(0.12,0.10,0.18), wall_color=(0.18,0.14,0.26))
-        self._place_player(pos=(0,2,12))
+        self._place_player(pos=(0,2,14))
 
         # Porta no fundo do corredor (Norte, Z=-13)
         dv, di = make_cube(1.0)
@@ -1290,11 +1294,19 @@ class Game:
 
 
     def _build_floor_puzzle(self):
-        pygame.mixer.music.stop()
-        pygame.mixer.music.load(os.path.join(_HERE, "assets", "music", "puzzle.mp3"))
-        pygame.mixer.music.play()
+        # Só reinicia a música se não estiver tocando puzzle.mp3
+        if not pygame.mixer.music.get_busy() or getattr(self, '_current_music', '') != 'puzzle':
+            pygame.mixer.music.stop()
+            pygame.mixer.music.load(os.path.join(_HERE, "assets", "music", "puzzle.mp3"))
+            pygame.mixer.music.play()
+            self._current_music = 'puzzle'
         self._build_room(floor_color=(0.18,0.16,0.28), wall_color=(0.26,0.20,0.38))
         self._place_player(pos=(0,0,12))
+
+        self.floor_state.obstacles = []
+        self.floor_state.puzzle_guards = []
+        self.floor_state.enemies = []
+        self.floor_state.push_box = None
 
         frame_w, frame_h = 4.0, 2.25
         frame_cx, frame_cy = 0.0, ROOM_H/2 + 0.4
@@ -1324,12 +1336,12 @@ class Game:
 
         piece_w, piece_h  = frame_w / 2, frame_h / 2
         pv, pi            = make_plane(piece_w, piece_h, 1)
-        # Layout das peças:
-        #   idx 0 → livre       (-4,  1.4, -2)
-        #   idx 1 → livre/pkr   ( 5.5, 6,  -7)  plataforma de parkour, sem bloqueio
-        #   idx 2 → caixa       (-5.5, 0.5, 4)  bloqueada até botão ser ativado
-        #   idx 3 → heartless   ( 4,  1.4,  2)  bloqueada até 3 guardas morrerem
-        scatter_positions = [(-4, 1.4, -2), (5.5, 6, -7), (-5.5, 0.5, 4), (4, 1.4, 2)]
+        # Layout:
+        #   idx 0 → sub-sala de parkour  (começa invisível, spawna lá)
+        #   idx 1 → livre / parkour sala (5.5, 6, -7)
+        #   idx 2 → em cima do botão     (-5.5, 2.5, 4)  precisa subir na caixa
+        #   idx 3 → heartless            (-3, 1.4, 2)
+        scatter_positions = [(0, 999, 0), (5.5, 6, -7), (-5.5, 2.5, 4), (-3, 1.4, 2)]
         mural_offsets     = [
             (-piece_w/2,  piece_h/2),
             ( piece_w/2,  piece_h/2),
@@ -1345,19 +1357,23 @@ class Game:
                                    base_color=(1,1,1), ka=0.9, kd=0.6, ks=0.1, shininess=8)
             pnode = SceneNode(f"puzzle_piece_{idx}", mesh=pm, texture=tex,
                               position=list(spos), rotation=(90,0,0))
+            if idx == 0:
+                pnode.visible = False
             self.scene.add(pnode)
             mural_pos = (frame_cx + mural_offsets[idx][0],
                          frame_cy + mural_offsets[idx][1], -8.9)
             self.puzzle_pieces.append({
-                "node": pnode, "collected": False,
-                "scatter_pos": spos, "mural_pos": mural_pos,
+                "node":        pnode,
+                "collected":   False,
+                "scatter_pos": spos,
+                "mural_pos":   mural_pos,
+                "image_path":  os.path.join(img_dir, f"piece_{idx}.png"),
+                "size":        (piece_w, piece_h),
             })
         self.floor_state.puzzle_solved = False
 
-        # ── Heartless guardando a peça 3 (4, 1.4, 2) ──────────────────────
-        # 3 heartless estacionários em triângulo ao redor da peça.
-        # A peça só pode ser coletada depois que TODOS os 3 morrerem.
-        guard_spawns = [(2.8, 0.5, 1.2), (4.0, 0.5, 3.2), (5.2, 0.5, 1.2)]
+        # ── Heartless guardando a peça 3 (-3, 1.4, 2) ────────────────────
+        guard_spawns = [(-2.0, 0.5, 1.2), (-0.6, 0.5, 3.2), (0.8, 0.5, 1.2)]
         self.floor_state.puzzle_guards = []
         for gpos in guard_spawns:
             ge, gn = _spawn_heartless(self.scene, gpos, level=3, stationary=True)
@@ -1366,9 +1382,8 @@ class Game:
             self.floor_state.puzzle_guards.append((ge, gn))
             self.floor_state.enemies.append((ge, gn))
 
-        # ── Caixa empurrável + botão (peça 2) ─────────────────────────────
-        
-        BOX_START  = [-9.0, 0.5, 4.0]
+        # ── Caixa spawna à esquerda do player, agora mais para frente (menos recuada)
+        BOX_START  = [-7.0, 0.5, 12.0]
         BTN_POS    = (-5.5, 0.02, 4.0)
         BTN_RADIUS = 0.9
 
@@ -1393,15 +1408,30 @@ class Game:
 
         self.floor_state.push_box = {
             "node":       box_node,
-            "pos":        [BOX_START[0], BOX_START[2]],  # [x, z] – Y é fixo
-            "velocity":   [0.0, 0.0],                    # [vx, vz]
-            "btn_pos":    (BTN_POS[0], BTN_POS[2]),      # (x, z)
+            "pos":        [BOX_START[0], BOX_START[2]],
+            "velocity":   [0.0, 0.0],
+            "btn_pos":    (BTN_POS[0], BTN_POS[2]),
             "btn_radius": BTN_RADIUS,
             "btn_node":   btn_node,
             "activated":  False,
             "piece_idx":  2,
             "hit_count":  0,
+            "hitbox":     BoxHitbox(x=BOX_START[0], y=BOX_START[1], z=BOX_START[2], width=1.0, height=1.0, depth=1.0),
         }
+
+        # ── Portal para sub-sala (parede sul) ─────────────────────────────
+        portal_mesh = make_box_mesh("parkour_portal", 2.5, 3.0, 0.3,
+                                    color=(0.2, 0.3, 0.6))
+        portal_node = SceneNode("parkour_portal", mesh=portal_mesh,
+                                position=(0, 1.5, 14.5))
+        self.scene.add(portal_node)
+        self.floor_state.parkour_portal_node = portal_node
+        # Adiciona uma hitbox física para o portal de entrada da sub-sala
+        try:
+            self.floor_state.obstacles.append(
+                BoxHitbox(x=0, y=1.5, z=14.5, width=2.5, height=3.0, depth=0.5))
+        except Exception:
+            pass
 
         _build_stairs(self.scene, self.floor_state)
         gm = make_box_mesh("gate", 3.2, 2.0, 0.3, color=(0.5,0.4,0.1))
@@ -1411,14 +1441,174 @@ class Game:
 
         self.hud.add_popup("Junte os fragmentos espalhados pela sala!", 3.0, (200,220,255))
         self.hud.add_popup("[Z] perto de cada fragmento para encaixá-lo no quadro", 4.0, (180,180,220))
-        self.hud.add_popup("Heartless guardam um fragmento — derrote-os primeiro!", 4.5, (255,180,100))
-        self.hud.add_popup("Empurre a caixa [Z] até o botão verde!", 5.5, (180,255,160))
+        self.hud.add_popup("Um fragmento está numa sala abaixo — volte pela entrada sul!", 5.0, (180,200,255))
+        self.hud.add_popup("Heartless guardam outro fragmento — derrote-os primeiro!", 5.5, (255,180,100))
+        self.hud.add_popup("Empurre a caixa [Z] até o botão verde e suba nela!", 6.0, (180,255,160))
+        # Porta no fundo do corredor (Norte, Z=-15) — permite avançar ao subir as escadas
+        dv, di = make_cube(1.0)
+        dm = make_box_mesh("door",3.0,4.0,0.3, color=(0.35,0.22,0.10), ka=0.2,kd=0.7,ks=0.3,shin=24)
+        try:
+            door_tex = Texture(os.path.join(_HERE, "assets", "models", "tower", "doorwood.jpeg"))
+        except Exception:
+            door_tex = None
+        door_node = SceneNode("door", mesh=dm, position=(0, 4.0,-15), scale=(1,1,1), texture=door_tex)
+        self.scene.add(door_node)
+        self.floor_state.door_node = door_node
+        # Se o puzzle já estiver resolvido, garante que a barreira não reapareça
+        if getattr(self.floor_state, 'puzzle_solved', False):
+            self._disable_barrier()
+
+    def _build_parkour_room(self):
+        """Constrói a sub-sala de parkour sobre o void."""
+        # Salva o estado atual do puzzle antes de limpar a cena
+        self._parkour_snapshot = {
+            "puzzle_state": [(p["collected"], p["scatter_pos"]) for p in self.puzzle_pieces],
+            "box_state": None,
+            "enemy_state": [(e.world_pos.copy(), e.dead) for e, _ in getattr(self.floor_state, 'puzzle_guards', [])],
+        }
+        pb = getattr(self.floor_state, 'push_box', None)
+        if pb is not None:
+            self._parkour_snapshot["box_state"] = {
+                "pos": pb["pos"].copy(),
+                "velocity": pb["velocity"].copy(),
+                "activated": pb["activated"],
+                "hit_count": pb["hit_count"],
+                "btn_color": getattr(pb["btn_node"].mesh, 'base_color', None),
+            }
+
+        self._clear_scene()
+        self.floor_state.in_parkour_room = True
+        pos = [0.0, 0.4, 12.0]  # Começa no topo da plataforma de entrada
+        skinned_node, skinned_mesh, anim = _load_skinned_player(position=pos, rotation=(0, 180, 0))
+        if skinned_node is not None:
+            self.player_node = skinned_node
+            self.player_skinned_mesh = skinned_mesh
+            self.player_anim = anim
+            # NÃO adicionar à cena — será renderizado por _render_skinned_player()
+        else:
+            self.player_node = None
+
+        glClearColor(0.01, 0.01, 0.03, 1.0)
+
+        wall_color  = (0.20, 0.16, 0.30)
+        ceil_color  = (0.12, 0.10, 0.18)
+        pv_ew, pi_ew = make_plane(ROOM_D, ROOM_H * 2, divs=6, tile_u=2, tile_v=2)
+        wall_texture = Texture(os.path.join(_HERE, "assets", "models", "tower", "stone_bricks.jpg"))
+        for name, pos, rot in [
+            ("pk_wall_w", (-ROOM_W/2, ROOM_H, 0), (90,  90, 0)),
+            ("pk_wall_e", ( ROOM_W/2, ROOM_H, 0), (90, -90, 0)),
+        ]:
+            wm = ProceduralMesh(name, pv_ew, pi_ew, base_color=wall_color,
+                                ka=0.25, kd=0.75, ks=0.1, shininess=8)
+            self.scene.add(SceneNode(name, mesh=wm, texture=wall_texture,
+                                     position=pos, rotation=rot))
+
+        pv_ns, pi_ns = make_plane(ROOM_W, ROOM_H * 2, divs=6, tile_u=2, tile_v=2)
+        for name, pos, rot in [
+            ("pk_wall_n", (0, ROOM_H, -ROOM_D/2), ( 90, 0, 0)),
+            ("pk_wall_s", (0, ROOM_H,  ROOM_D/2), (-90, 180, 0)),
+        ]:
+            wm = ProceduralMesh(name, pv_ns, pi_ns, base_color=wall_color,
+                                ka=0.25, kd=0.75, ks=0.1, shininess=8)
+            self.scene.add(SceneNode(name, mesh=wm, texture=wall_texture,
+                                     position=pos, rotation=rot))
+
+        cv, ci = make_plane(ROOM_W, ROOM_D, 20, tile_u=ROOM_W/2, tile_v=ROOM_D/2)
+        cm = ProceduralMesh("pk_ceil", cv, ci, base_color=ceil_color,
+                            ka=0.2, kd=0.6, ks=0.05, shininess=4)
+        ceil_tex = Texture(os.path.join(_HERE, "assets", "models", "tower", "floor.jpeg"))
+        self.scene.add(SceneNode("pk_ceil", mesh=cm, texture=ceil_tex,
+                                  position=(0, ROOM_H * 2, 0), rotation=(180, 0, 0)))
+
+        entry_plat = make_box_mesh("pk_entry", 4.0, 0.4, 3.0, color=(0.45,0.40,0.35))
+        self.scene.add(SceneNode("pk_entry", mesh=entry_plat,
+                                  position=(0, 0.2, 12.0),
+                                  texture=Texture(os.path.join(_HERE, "assets", "models", "tower", "tower_stone.png"))))
+        self.floor_state.obstacles.append(
+            BoxHitbox(x=0, y=0.0, z=12.0, width=4.0, height=0.4, depth=3.0))
+
+        # Plataformas do parkour: afastadas progressivamente da entrada e um pouco mais altas
+        plat_defs = [
+            ("pk_plat0", ( 1.5, 1.4,  6.6), 3.0, 0.4, 3.0),
+            ("pk_plat1", (-2.4, 2.1,  3.2), 3.0, 0.4, 3.0),
+            ("pk_plat2", ( 1.8, 3.0, -2.2), 3.0, 0.4, 3.0),
+        ]
+        plat_tex = Texture(os.path.join(_HERE, "assets", "models", "tower", "tower_stone.png"))
+        for pname, (px, py, pz), pw, ph, pd in plat_defs:
+            pm2 = make_box_mesh(pname, pw, ph, pd, color=(0.40, 0.35, 0.50))
+            self.scene.add(SceneNode(pname, mesh=pm2, texture=plat_tex,
+                                      position=(px, py, pz)))
+            self.floor_state.obstacles.append(
+                BoxHitbox(x=px, y=py - ph/2, z=pz, width=pw, height=ph, depth=pd))
+
+        final_tex = Texture(os.path.join(_HERE, "assets", "models", "tower", "tower_stone.png"))
+        fm = make_box_mesh("pk_final", 3.5, 0.4, 3.5, color=(0.35, 0.30, 0.50))
+        # Plataforma final ajustada para manter espaçamento de 5.4 unidades
+        self.scene.add(SceneNode("pk_final", mesh=fm, texture=final_tex,
+                                  position=(0, 3.8, -7.2)))
+        self.floor_state.obstacles.append(
+            BoxHitbox(x=0, y=3.6, z=-7.2, width=3.5, height=0.4, depth=3.5))
+
+        # ── Portal de volta (parede norte/entrada) ─────────────────────
+        return_portal = make_box_mesh("pk_return", 2.5, 3.0, 0.3, color=(0.6, 0.3, 0.2))
+        # Recua o portal de retorno para não ficar no centro da plataforma inicial
+        self.scene.add(SceneNode("pk_return", mesh=return_portal, position=(0, 1.5, 14.0)))
+        self.floor_state.parkour_return_pos = (0, 0.4, 14.5)
+        # Adiciona uma hitbox física para o portal (colisão)
+        try:
+            self.floor_state.obstacles.append(
+                BoxHitbox(x=0, y=1.5, z=14.0, width=2.5, height=3.0, depth=0.5))
+        except Exception:
+            pass
+
+        # Recriar a pe\u00e7a 0 na sub-sala se ainda n\u00e3o foi coletada
+        if self.puzzle_pieces and not self.puzzle_pieces[0]["collected"]:
+            piece0 = self.puzzle_pieces[0]
+            piece_w, piece_h = piece0["size"]
+            pv0, pi0 = make_plane(piece_w, piece_h, 1)
+            tex0 = None
+            if piece0.get("image_path"):
+                tex0 = Texture(piece0["image_path"])
+            mesh0 = ProceduralMesh("puzzle_piece_0", pv0, pi0,
+                                   base_color=(1,1,1), ka=0.9, kd=0.6, ks=0.1, shininess=8)
+            piece0_node = SceneNode("puzzle_piece_0", mesh=mesh0, texture=tex0,
+                                    position=[0.0, 5.8, -7.2], rotation=(90,0,0))
+            piece0_node.visible = True
+            self.scene.add(piece0_node)
+            piece0["node"] = piece0_node
+            piece0["scatter_pos"] = (0.0, 5.8, -7.2)
+
+        self.scene.light.orbit     = False
+        self.scene.light.pos       = [0.0, ROOM_H * 1.5, 0.0]
+        self.scene.light.intensity = 1.0
+        self.scene.light.color     = np.array([0.6, 0.5, 0.9], dtype=np.float32)
+
+        self.player.world_pos = [0.0, 0.4, 12.0]  # Começa no topo da plataforma de entrada
+        self.player.velocity  = [0.0, 0.0, 0.0]
+        self.player.on_ground = True
+        self.player_node.position = list(self.player.world_pos)
+
+        self.hud.add_popup("Sub-sala de parkour!", 2.5, (180, 200, 255))
+        self.hud.add_popup("Cuidado com o void — cair é morte!", 3.0, (255, 100, 100))
+        self.hud.add_popup("Pule pelas plataformas e pegue o fragmento!", 3.5, (200, 220, 255))
+
     def _build_floor_aerial(self):
         pygame.mixer.music.stop()
         pygame.mixer.music.load(os.path.join(_HERE, "assets", "music", "combat.mp3"))
         pygame.mixer.music.play()
         self._build_room(floor_color=(0.16,0.14,0.22), wall_color=(0.24,0.20,0.34))
         self._place_player(pos=(0,0,12))
+
+        # Porta no fundo do corredor (Norte, Z=-15) — restaurada para navegação entre andares
+        dv, di = make_cube(1.0)
+        dm = make_box_mesh("door",3.0,4.0,0.3, color=(0.35,0.22,0.10), ka=0.2,kd=0.7,ks=0.3,shin=24)
+        try:
+            door_tex = Texture(os.path.join(_HERE, "assets", "models", "tower", "doorwood.jpeg"))
+        except Exception:
+            door_tex = None
+        door_node = SceneNode("door", mesh=dm, position=(0, 4.0,-15), scale=(1,1,1), texture=door_tex)
+        self.scene.add(door_node)
+        self.floor_state.door_node = door_node
 
         for px, pz in [(-4,0),(4,0),(0,4)]:
             e, n = _spawn_heartless(self.scene, (px,0.5,pz), level=3)
@@ -1461,6 +1651,17 @@ class Game:
         self.floor_state.barrier_node = gate_node
         self.floor_state.rhythm_done  = False
 
+        # Porta no fundo do corredor (Norte, Z=-15) — permite avançar ao subir as escadas
+        dv, di = make_cube(1.0)
+        dm = make_box_mesh("door",3.0,4.0,0.3, color=(0.35,0.22,0.10), ka=0.2,kd=0.7,ks=0.3,shin=24)
+        try:
+            door_tex = Texture(os.path.join(_HERE, "assets", "models", "tower", "doorwood.jpeg"))
+        except Exception:
+            door_tex = None
+        door_node = SceneNode("door", mesh=dm, position=(0, 4.0,-15), scale=(1,1,1), texture=door_tex)
+        self.scene.add(door_node)
+        self.floor_state.door_node = door_node
+
         for cx, cz in [(-8.0,-2.0),(-8.0,2.0),(8.0,-2.0),(8.0,2.0)]:
             _add_tower_deco(self.scene, self.floor_state, "crystal", position=(cx, 0.0, cz), scale=(1.0,1.0,1.0), collision_radius=0.9)
 
@@ -1491,8 +1692,32 @@ class Game:
         self.floor_state.enemies        = list(wave1)
         self.floor_state.stair_locked   = True
 
-        pm = make_box_mesh("portal_gate", 3.0, 4.0, 0.3, color=(0.5,0.1,0.1))
-        self.scene.add(SceneNode("portal_gate", mesh=pm, position=(0,2.0,-13.5)))
+        # Constrói escadas para permitir subir quando corredor liberar
+        _build_stairs(self.scene, self.floor_state)
+
+        # Porta/portal visual + referência de barrier_node e hitbox (posicionada como nos outros andares)
+        pm = make_box_mesh("portal_gate", 3.2, 2.0, 0.3, color=(0.5,0.1,0.1))
+        gate_node = SceneNode("portal_gate", mesh=pm, position=(0,1.0,-10.5))
+        self.scene.add(gate_node)
+        self.floor_state.barrier_node = gate_node
+        # adiciona hitbox físico para bloquear até a barreira cair (mesma posição dos outros andares)
+        try:
+            self.floor_state.obstacles.append(
+                BoxHitbox(x=0, y=1.0, z=-10.5, width=3.2, height=2.0, depth=0.5))
+        except Exception:
+            pass
+
+        # Porta no fundo do corredor (Norte, Z=-15) — permite avançar após limpar
+        dv, di = make_cube(1.0)
+        dm = make_box_mesh("door",3.0,4.0,0.3, color=(0.35,0.22,0.10), ka=0.2,kd=0.7,ks=0.3,shin=24)
+        try:
+            door_tex = Texture(os.path.join(_HERE, "assets", "models", "tower", "doorwood.jpeg"))
+        except Exception:
+            door_tex = None
+        door_node = SceneNode("door", mesh=dm, position=(0, 4.0,-15), scale=(1,1,1), texture=door_tex)
+        self.scene.add(door_node)
+        self.floor_state.door_node = door_node
+
         self.hud.add_popup("Corredor Final! Sobreviva!", 3.0, (255,100,100))
 
     def _build_floor_rest(self):
@@ -1508,7 +1733,23 @@ class Game:
         self.hud.add_popup("Sala de Descanso", 3.0, (100,255,180))
         self.hud.add_popup("HP e MP recuperados! Jogo salvo.", 3.5, (180,255,200))
         self.hud.add_popup("Avance para enfrentar o boss final...", 4.5, (255,220,200))
-        self.scene.add(SceneNode("boss_door", mesh=make_box_mesh("boss_door",3.0,4.0,0.3, color=(0.6,0.2,0.6)), position=(0,2.0,-13.0)))
+
+        # Garante escadas e porta com textura/colisão para avançar ao boss
+        _build_stairs(self.scene, self.floor_state)
+        dv, di = make_cube(1.0)
+        dm = make_box_mesh("boss_door",3.0,4.0,0.3, color=(0.6,0.2,0.6))
+        try:
+            door_tex = Texture(os.path.join(_HERE, "assets", "models", "tower", "doorwood.jpeg"))
+        except Exception:
+            door_tex = None
+        door_node = SceneNode("boss_door", mesh=dm, position=(0,4.0,-15), texture=door_tex)
+        self.scene.add(door_node)
+        self.floor_state.door_node = door_node
+        # Adiciona hitbox para alinhamento e colisão na frente da porta
+        try:
+            self.floor_state.obstacles.append(BoxHitbox(x=0, y=2.0, z=-15.0, width=3.0, height=4.0, depth=0.5))
+        except Exception:
+            pass
 
     def _build_floor_boss(self):
         pygame.mixer.music.stop()
@@ -1767,8 +2008,8 @@ class Game:
         if self.current_floor == self.FLOOR_ENTRY:
             if fs.barrier_active and not alive:
                 fs.stair_locked = False
-                fs.barrier_node.visible = False
-                fs.barrier_active = False
+                # desativa completamente a barreira (visual + física)
+                self._disable_barrier()
                 pygame.mixer.music.stop()
                 pygame.mixer.music.load(os.path.join(_HERE, "assets", "music", "tower.mp3"))
                 pygame.mixer.music.play()
@@ -1777,7 +2018,8 @@ class Game:
         elif self.current_floor == self.FLOOR_AERIAL:
             if not alive:
                 fs.stair_locked = False
-                if fs.barrier_node: fs.barrier_node.visible = False
+                # garante remoção completa da barreira (visual + colisão/flag)
+                self._disable_barrier()
                 pygame.mixer.music.stop()
                 pygame.mixer.music.load(os.path.join(_HERE, "assets", "music", "tower.mp3"))
                 pygame.mixer.music.play()
@@ -1795,6 +2037,8 @@ class Game:
                     self.hud.add_popup("Próxima onda!", 2.0, (255,180,100))
                 else:
                     fs.stair_locked = False
+                    # desativa completamente a barreira (visual + física)
+                    self._disable_barrier()
                     pygame.mixer.music.stop()
                     pygame.mixer.music.load(os.path.join(_HERE, "assets", "music", "tower.mp3"))
                     pygame.mixer.music.play()
@@ -1847,37 +2091,28 @@ class Game:
             self.hud.add_popup("Swoosh!", 0.6, (200,200,200))
 
     def _try_activate_orb(self):
-        """Tenta coletar/encaixar um fragmento do puzzle.
-
-        Regras:
-          • idx=2 – bloqueada até a caixa ativar o botão verde.
-          • idx=3 – bloqueada até os 3 heartless guardas morrerem.
-          • Qualquer peça – só coleta se estiver a ≤2u de distância.
-          • Soco em caixa – se player está a ≤1.8u da caixa, aplica impulso.
-        """
+        """Coleta fragmento ou empurra caixa."""
         p  = self.player
         fs = self.floor_state
 
-        # ── Tentar empurrar a caixa ───────────────────────────────────────
+        # ── Empurrar caixa ────────────────────────────────────────────────
         pb = getattr(fs, "push_box", None)
-        if pb and not pb["activated"]:
+        if pb and not pb["activated"] and not getattr(fs, "in_parkour_room", False):
             bx, bz = pb["pos"][0], pb["pos"][1]
             dx = bx - p.world_pos[0]
             dz = bz - p.world_pos[2]
-            dist_box = math.sqrt(dx*dx + dz*dz)
-            if dist_box < 1.8:
+            if math.sqrt(dx*dx + dz*dz) < 1.8:
                 IMPULSE = 3.5
-                norm = dist_box if dist_box > 1e-4 else 1.0
+                norm = math.sqrt(dx*dx + dz*dz)
+                norm = norm if norm > 1e-4 else 1.0
                 pb["velocity"][0] += (dx / norm) * IMPULSE
                 pb["velocity"][1] += (dz / norm) * IMPULSE
                 pb["hit_count"]   += 1
-                self.hud.add_popup(
-                    f"Caixa empurrada! (soco {pb['hit_count']})",
-                    0.7, (200, 200, 120)
-                )
+                self.hud.add_popup(f"Caixa empurrada! (soco {pb['hit_count']})",
+                                   0.7, (200, 200, 120))
                 return
 
-        # ── Tentar coletar um fragmento ───────────────────────────────────
+        # ── Coletar fragmento ─────────────────────────────────────────────
         for idx, piece in enumerate(self.puzzle_pieces):
             if piece["collected"]:
                 continue
@@ -1891,37 +2126,94 @@ class Game:
             if dist >= 2.0:
                 continue
 
-            # Peça 2 → bloqueada pelo botão da caixa
+            # Peça 0 → só coleta na sub-sala de parkour
+            if idx == 0:
+                if not getattr(fs, "in_parkour_room", False):
+                    self.hud.add_popup(
+                        "Esse fragmento está numa sala abaixo — volte pela entrada sul!",
+                        2.0, (180, 200, 255))
+                    return
+                piece["collected"] = True
+                piece["scatter_pos"] = piece["mural_pos"]
+                piece["node"].visible = False
+                if getattr(self, '_parkour_snapshot', None) is not None:
+                    self._parkour_snapshot["puzzle_state"][0] = (True, piece["scatter_pos"])
+                self._check_puzzle()
+                self.hud.add_popup("Fragmento coletado! Volte para o quadro do puzzle.", 2.5, (200, 255, 200))
+                return
+
+            # Peça 2 → bloqueada pelo botão
             if idx == 2:
                 if pb and not pb["activated"]:
-                    self.hud.add_popup(
-                        "Empurre a caixa até o botão verde!",
-                        1.5, (200, 255, 160)
-                    )
+                    self.hud.add_popup("Empurre a caixa até o botão verde e suba nela!",
+                                       1.5, (200, 255, 160))
                     return
 
-            # Peça 3 → bloqueada pelos heartless guardas
+            # Peça 3 → bloqueada pelos guardas
             if idx == 3:
                 guards = getattr(fs, "puzzle_guards", [])
                 if any(not ge.dead for ge, _gn in guards):
-                    self.hud.add_popup(
-                        "Guardas vivos! Derrote os Heartless primeiro.",
-                        1.8, (255, 120, 80)
-                    )
+                    self.hud.add_popup("Guardas vivos! Derrote os Heartless primeiro.",
+                                       1.8, (255, 120, 80))
                     return
-
-            # Coletar
+                
             piece["collected"] = True
             piece["node"].position = list(piece["mural_pos"])
+            piece["node"].visible  = True
             self.hud.add_popup("Fragmento encaixado!", 1.5, (200, 200, 100))
             self._check_puzzle()
             return
+
     def _check_puzzle(self):
         if all(p["collected"] for p in self.puzzle_pieces):
             self.floor_state.puzzle_solved = True
             self.floor_state.stair_locked  = False
-            self.floor_state.barrier_node.visible = False
+            # desativa completamente a barreira (visual + física)
+            self._disable_barrier()
             self.hud.add_popup("Quadro completo! Suba as escadas.", 3.0, (100,255,100))
+
+    def _disable_barrier(self):
+        """Desativa a barreira visualmente e remove sua hitbox/flag do floor_state."""
+        fs = getattr(self, 'floor_state', None)
+        if fs is None: return
+        try:
+            if getattr(fs, 'barrier_node', None):
+                fs.barrier_node.visible = False
+        except Exception:
+            pass
+        # marca inativa e remove hitbox correspondente (se presente)
+        try:
+            fs.barrier_active = False
+            # Remove hitboxes de barreira próximos às escadas (cobre z ≈ -9.0, -10.5, -13.5 etc.)
+            new_obs = []
+            for h in getattr(fs, 'obstacles', []):
+                if not isinstance(h, BoxHitbox):
+                    new_obs.append(h); continue
+                hz = getattr(h, 'z', None)
+                w = getattr(h, 'width', 0)
+                # considera hitboxes largas/altas posicionadas no corredor como barreira
+                if hz is not None and -14.0 <= hz <= -8.0 and w >= 2.0:
+                    # pulando (removendo) este hitbox
+                    continue
+                new_obs.append(h)
+            fs.obstacles = new_obs
+        except Exception:
+            pass
+        # Além de limpar flags e hitboxes, garante que quaisquer nós de "gate"/"barrier"
+        # próximos às escadas sejam escondidos (cobre duplicatas/iterações antigas).
+        try:
+            for node in list(getattr(self.scene, 'nodes', [])):
+                name = getattr(node, 'name', '') or ''
+                z = getattr(node, 'position', [0,0,0])[2] if getattr(node, 'position', None) else None
+                if z is None:
+                    continue
+                if -13.0 <= z <= -8.0 and ( 'gate' in name or name == 'barrier' or name == 'portal_gate'):
+                    try:
+                        node.visible = False
+                    except Exception:
+                        pass
+        except Exception:
+            pass
 
     # ── Rhythm game ───────────────────────────────────────────────────────────
 
@@ -1971,7 +2263,7 @@ class Game:
             if pct >= 0.5:
                 self.floor_state.rhythm_done  = True
                 self.floor_state.stair_locked = False
-                self.floor_state.barrier_node.visible = False
+                self._disable_barrier()
                 for re_ in self.rhythm_enemies:
                     re_["enemy"].dead = True; re_["node"].visible = False
                 self.hud.add_popup(f"Ritmo! {self.rhythm_score}/{self.rhythm_total} – Suba!", 3.0, (100,255,200))
@@ -2077,15 +2369,58 @@ class Game:
                 pygame.mixer.music.load(os.path.join(_HERE, "assets", "music", "combat.mp3"))
                 pygame.mixer.music.play()
                 self.floor_state.barrier_active = True
-                self.floor_state.barrier_active = True
                 self.floor_state.barrier_node.visible = True
+                # Adiciona physics à barreira quando ela fica ativa
+                self.floor_state.obstacles.append(
+                    BoxHitbox(x=0, y=ROOM_H/2-0.5, z=-9.0, width=ROOM_W-2, height=ROOM_H-1, depth=0.2))
+                # Reposiciona player no meio da sala para não ficar preso
+                self.player.world_pos = [0.0, 0.5, -2.0]
                 for ep in [(-3,0.5,-5),(3,0.5,-5),(0,0.5,-3)]:
                     e, n = _spawn_heartless(self.scene, ep, level=2)
                     e.respawns_left = 0; self.floor_state.enemies.append((e,n))
                 self.hud.add_popup("TUTORIAL DE COMBATE!", 2.5, (255,200,80))
                 self.hud.add_popup("[Z] para atacar os Heartless!", 3.5, (200,200,255))
 
-        elif self.current_floor in (self.FLOOR_PUZZLE, self.FLOOR_AERIAL, self.FLOOR_RHYTHM, self.FLOOR_GAUNTLET):
+        # Volta da sub-sala de parkour (entrada norte, apenas no puzzle)
+        if (self.current_floor == self.FLOOR_PUZZLE
+                and getattr(self.floor_state, 'in_parkour_room', False)
+                and pz > 11.0 and abs(px) < 2.0):
+            def _back_to_puzzle():
+                self._rebuild_puzzle_keep_state()
+            self._start_fade(_back_to_puzzle, duration=0.35)
+            self.hud.add_popup("Voltando...", 1.5, (180, 200, 255))
+            return
+        # Entrada na sub-sala de parkour (parede sul, apenas no puzzle)
+        if (self.current_floor == self.FLOOR_PUZZLE
+                and not getattr(self.floor_state, 'in_parkour_room', False)
+                and pz > 13.5 and abs(px) < 2.0):
+            def _enter_parkour():
+                self._build_parkour_room()
+            self._start_fade(_enter_parkour, duration=0.35)
+            self.hud.add_popup("Entrando na sub-sala...", 1.5, (180, 200, 255))
+            return
+
+        # Sair de FLOOR_PUZZLE (quando puzzle completo)
+        if self.current_floor == self.FLOOR_PUZZLE:
+            if pz < -10.0 and not self.floor_state.stair_locked:
+                self._advance_floor()
+                return
+
+        if self.current_floor == self.FLOOR_AERIAL:
+            # Avança para o próximo andar quando estiver perto das escadas e destrancado
+            if pz < -10.0 and not self.floor_state.stair_locked:
+                self._advance_floor()
+                return
+        if self.current_floor == self.FLOOR_RHYTHM:
+            if pz < -10.0 and not self.floor_state.stair_locked:
+                self._advance_floor()
+                return
+        if self.current_floor == self.FLOOR_GAUNTLET:
+            if pz < -10.0 and not self.floor_state.stair_locked:
+                self._advance_floor()
+                return
+
+        if self.current_floor == self.FLOOR_ENTRY:
             if pz < -10.0 and not self.floor_state.stair_locked:
                 self._advance_floor()
 
@@ -2383,10 +2718,13 @@ class Game:
 
     def _calculate_ground_height(self, player):
 
-        ground_y = self._stair_ground_y(
-            player.world_pos[0],
-            player.world_pos[2]
-        )
+        if getattr(self.floor_state, 'in_parkour_room', False):
+            ground_y = -999.0
+        else:
+            ground_y = self._stair_ground_y(
+                player.world_pos[0],
+                player.world_pos[2]
+            )
 
         for hitbox in self.floor_state.obstacles:
 
@@ -2396,6 +2734,14 @@ class Game:
 
                 if h is not None:
                     ground_y = max(ground_y, h)
+        
+        # Verifica também o hitbox da caixa empurrável (dinâmico)
+        pb = getattr(self.floor_state, "push_box", None)
+        if pb and pb["hitbox"]:
+            h = pb["hitbox"].get_surface_height(player)
+            if h is not None:
+                ground_y = max(ground_y, h)
+        
         return ground_y
 
     def _update_player_ground(self, dt):
@@ -2417,6 +2763,104 @@ class Game:
             p.world_pos[1] = ground_y
             p.velocity[1] = 0
             p.on_ground = True
+
+        # Void da sub-sala de parkour: caída livre até a morte após alguns segundos
+        if getattr(self.floor_state, 'in_parkour_room', False) and p.world_pos[1] < -2.0:
+            self.void_fall_timer = (self.void_fall_timer or 0.0) + dt
+            if self.void_fall_timer >= 1.5:
+                self.void_fall_timer = None
+                self.hud.add_popup("Caiu no void!", 1.5, (255, 60, 60))
+                self._trigger_death()
+        else:
+            self.void_fall_timer = None
+
+    def _rebuild_puzzle_keep_state(self):
+        """Volta do parkour pro puzzle mantendo progresso."""
+        # Salva estado de TUDO que precisa persistir
+        puzzle_solved = self.floor_state.puzzle_solved
+        stair_locked = self.floor_state.stair_locked
+        parkour_snapshot = getattr(self, "_parkour_snapshot", None)
+        if parkour_snapshot is not None:
+            puzzle_state = parkour_snapshot.get("puzzle_state", [(p["collected"], p["scatter_pos"]) for p in self.puzzle_pieces])
+            box_state = parkour_snapshot.get("box_state")
+            enemy_state = parkour_snapshot.get("enemy_state", [])
+        else:
+            puzzle_state = [(p["collected"], p["scatter_pos"]) for p in self.puzzle_pieces]
+            box_state = None
+            if self.floor_state.push_box:
+                box_state = {
+                    "pos": self.floor_state.push_box["pos"].copy(),
+                    "velocity": self.floor_state.push_box["velocity"].copy(),
+                    "activated": self.floor_state.push_box["activated"],
+                    "hit_count": self.floor_state.push_box["hit_count"],
+                }
+            enemy_state = [(e.world_pos.copy(), e.dead) for e, _ in self.floor_state.puzzle_guards] if hasattr(self.floor_state, 'puzzle_guards') else []
+        
+        # Limpa e reconstrói
+        self._clear_scene()
+        self._build_floor_puzzle()
+        # Restaura estado persistente do puzzle
+        self.floor_state.puzzle_solved = puzzle_solved
+        self.floor_state.stair_locked = stair_locked
+        if puzzle_solved:
+            # garante que a barreira fique removida ao reconstruir a sala
+            self._disable_barrier()
+        
+        # Restaura estado das peças
+        for idx, (was_collected, old_pos) in enumerate(puzzle_state):
+            if idx == 0:  # Peça 0 fica na sub-sala
+                self.puzzle_pieces[0]["collected"] = was_collected
+                self.puzzle_pieces[0]["scatter_pos"] = old_pos
+                if was_collected:
+                    self.puzzle_pieces[0]["node"].visible = True
+                    self.puzzle_pieces[0]["node"].position = list(self.puzzle_pieces[0]["mural_pos"])
+                else:
+                    self.puzzle_pieces[0]["node"].visible = False
+                    self.puzzle_pieces[0]["node"].position = [0.0, 999.0, 0.0]
+                continue
+            
+            if was_collected:
+                self.puzzle_pieces[idx]["collected"] = True
+                self.puzzle_pieces[idx]["node"].visible = True  # Visível no quadro
+                self.puzzle_pieces[idx]["node"].position = list(self.puzzle_pieces[idx]["mural_pos"])  # Na mural
+            else:
+                self.puzzle_pieces[idx]["collected"] = False
+                self.puzzle_pieces[idx]["node"].visible = True
+                self.puzzle_pieces[idx]["scatter_pos"] = old_pos
+                self.puzzle_pieces[idx]["node"].position = list(old_pos)
+        
+        # Restaura estado da caixa
+        if box_state and self.floor_state.push_box:
+            box = self.floor_state.push_box
+            box["pos"] = box_state["pos"]
+            box["velocity"] = box_state["velocity"]
+            box["activated"] = box_state["activated"]
+            box["hit_count"] = box_state["hit_count"]
+            # Atualiza posição visual da caixa
+            box["node"].position = [box["pos"][0], 0.5, box["pos"][1]]
+            # Atualiza hitbox
+            box["hitbox"].x = box["pos"][0]
+            box["hitbox"].z = box["pos"][1]
+            if box["activated"]:
+                box["btn_node"].mesh.base_color = (0.85, 1.0, 0.15)
+        
+        # Restaura estado dos inimigos
+        self.floor_state.enemies = []
+        if hasattr(self.floor_state, 'puzzle_guards'):
+            for ((e, n), (old_pos, was_dead)) in zip(self.floor_state.puzzle_guards, enemy_state):
+                e.world_pos = list(old_pos)
+                e.dead = was_dead
+                n.visible = not was_dead
+                n.position = list(old_pos)
+                if was_dead:
+                    n.visible = False
+                self.floor_state.enemies.append((e, n))
+        
+        self.floor_state.in_parkour_room = False
+        self.player.world_pos = [0.0, 0.8, 12.0]
+        self.player.velocity = [0.0, 0.0, 0.0]
+        self.player.on_ground = True
+        self.hud.add_popup("De volta ao puzzle!", 2.0, (200, 220, 255))
 
     def _resolve_obstacle_collisions(self):
 
@@ -2492,9 +2936,14 @@ class Game:
         ):
             north_limit = -9.5
 
+        south_limit = hd
+        # Na sub-sala de parkour não há parede sul (o void fica abaixo)
+        # mas mantemos os limites laterais normais.
+        if getattr(self.floor_state, 'in_parkour_room', False):
+            south_limit = hd  # sem restrição extra
         p.world_pos[2] = max(
             north_limit,
-            min(hd, p.world_pos[2])
+            min(south_limit, p.world_pos[2])
         )
 
     def _update_player(self, dt):
@@ -2523,7 +2972,7 @@ class Game:
         if self.current_floor != self.FLOOR_PUZZLE:
             return
         pb = getattr(self.floor_state, "push_box", None)
-        if pb is None or pb["activated"]:
+        if pb is None:
             return
 
         FRICTION = 5.0    # desaceleração (m/s²)
@@ -2531,26 +2980,33 @@ class Game:
         ROOM_HW  = ROOM_W / 2 - 0.8
         ROOM_HD  = ROOM_D / 2 - 0.8
 
-        vx, vz = pb["velocity"]
-
-        # Fricção
-        speed = math.sqrt(vx*vx + vz*vz)
-        if speed > 0.0:
-            decel = min(FRICTION * dt, speed)
-            pb["velocity"][0] -= (vx / speed) * decel
-            pb["velocity"][1] -= (vz / speed) * decel
+        # Se não foi ativado ainda, aplica movimento e fricção
+        if not pb["activated"]:
             vx, vz = pb["velocity"]
 
-        # Mover
-        pb["pos"][0] += vx * dt
-        pb["pos"][1] += vz * dt
+            # Fricção
+            speed = math.sqrt(vx*vx + vz*vz)
+            if speed > 0.0:
+                decel = min(FRICTION * dt, speed)
+                pb["velocity"][0] -= (vx / speed) * decel
+                pb["velocity"][1] -= (vz / speed) * decel
+                vx, vz = pb["velocity"]
 
-        # Limites da sala
-        pb["pos"][0] = max(-ROOM_HW, min(ROOM_HW, pb["pos"][0]))
-        pb["pos"][1] = max(-ROOM_HD, min(ROOM_HD, pb["pos"][1]))
+            # Mover
+            pb["pos"][0] += vx * dt
+            pb["pos"][1] += vz * dt
 
-        # Atualiza SceneNode
+            # Limites da sala
+            pb["pos"][0] = max(-ROOM_HW, min(ROOM_HW, pb["pos"][0]))
+            pb["pos"][1] = max(-ROOM_HD, min(ROOM_HD, pb["pos"][1]))
+
+        # Atualiza SceneNode (sempre, ativada ou não)
         pb["node"].position = [pb["pos"][0], BOX_Y, pb["pos"][1]]
+        
+        # Atualiza hitbox da caixa
+        pb["hitbox"].x = pb["pos"][0]
+        pb["hitbox"].z = pb["pos"][1]
+        pb["hitbox"].y = BOX_Y
 
         # Colisão player ↔ caixa (empurra player para fora – AABB vs círculo)
         BOX_HALF = 0.6
@@ -2567,15 +3023,16 @@ class Game:
             self.player.world_pos[0] += ddx * push
             self.player.world_pos[2] += ddz * push
 
-        # Checa se a caixa chegou no botão
-        btnx, btnz = pb["btn_pos"]
-        ddx2 = pb["pos"][0] - btnx
-        ddz2 = pb["pos"][1] - btnz
-        if math.sqrt(ddx2*ddx2 + ddz2*ddz2) < pb["btn_radius"]:
-            pb["activated"]              = True
-            pb["velocity"]               = [0.0, 0.0]
-            pb["btn_node"].mesh.base_color = (0.85, 1.0, 0.15)  # botão fica amarelo
-            self.hud.add_popup("Botão ativado! Fragmento liberado!", 2.5, (180, 255, 120))
+        # Checa se a caixa chegou no botão (apenas se ainda não foi ativada)
+        if not pb["activated"]:
+            btnx, btnz = pb["btn_pos"]
+            ddx2 = pb["pos"][0] - btnx
+            ddz2 = pb["pos"][1] - btnz
+            if math.sqrt(ddx2*ddx2 + ddz2*ddz2) < pb["btn_radius"]:
+                pb["velocity"]               = [0.0, 0.0]  # para de se mover
+                pb["btn_node"].mesh.base_color = (0.85, 1.0, 0.15)  # botão fica amarelo
+                pb["activated"]              = True  # marca como ativado para libertar o fragmento
+                self.hud.add_popup("Botão ativado! Fragmento liberado!", 2.5, (180, 255, 120))
 
     def _update_enemies(self, dt):
         for e, node in self.floor_state.enemies:
