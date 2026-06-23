@@ -945,16 +945,20 @@ class Game:
         self.emilia_anim           = None
         self.marluxia_skinned_mesh = None
         self.marluxia_anim         = None
-        self.rhythm_active       = False
-        self.rhythm_beats        = []
-        self.rhythm_score        = 0
-        self.rhythm_total        = 0
-        self.rhythm_timer        = 0.0
-        self.rhythm_window       = 0.20
-        self.rhythm_warn_window  = 0.55
-        self.rhythm_enemies      = []
-        self.rhythm_targets      = []
-        self.rhythm_active_idx   = -1
+        self.rhythm_notes               = []
+        self.rhythm_duration            = 90.0
+        self.rhythm_timer               = 0.0
+        self.rhythm_fall_time           = 1.6
+        self.rhythm_window_perfect      = 0.05
+        self.rhythm_window_good         = 0.12
+        self.rhythm_window_ok           = 0.20
+        self.rhythm_points_table        = {"perfect": 3, "good": 2, "ok": 1, "miss": 0}
+        self.rhythm_max_points          = 0
+        self.rhythm_score_points        = 0
+        self.rhythm_last_feedback       = None
+        self.rhythm_last_feedback_timer = 0.0
+        self.rhythm_lane_flash          = [None, None, None, None]  # [cor, timer] por lane
+        self.rhythm_hold_keys           = {}   # lane_idx -> {note_idx, held, required, quality}
         self.story_active        = False
         self.story_lines         = []
         self.story_idx           = 0
@@ -1632,17 +1636,22 @@ class Game:
     def _build_floor_rhythm(self):
         pygame.mixer.music.stop()
         pygame.mixer.music.load(os.path.join(_HERE, "assets", "music", "rythm.mp3"))
-        pygame.mixer.music.play()
+        pygame.mixer.music.stop()  # garante que não toque antes do obelisco ser ativado
         self._build_room(floor_color=(0.10,0.18,0.20), wall_color=(0.16,0.26,0.30))
         self._place_player(pos=(0,0,12))
 
-        self.rhythm_enemies = []
-        for px, pz in [(-3,-3),(0,-4),(3,-3)]:
-            e, n = _spawn_heartless(self.scene, (px,0.5,pz), level=2, stationary=True)
-            e.respawns_left = 0
-            meshes = _collect_meshes(n)
-            self.rhythm_enemies.append({"enemy": e, "node": n, "meshes": meshes,
-                                         "orig_colors": [tuple(m.base_color) for m in meshes]})
+        # ── Obelisco central — interagir com [E/Enter] inicia o minigame ──
+        obv, obi = make_cube(1.0)
+        ob_mesh = make_box_mesh("rhythm_obelisk", 1.2, 3.2, 1.2, color=(0.25, 0.55, 0.60))
+        ob_node = SceneNode("rhythm_obelisk", mesh=ob_mesh, position=(0.0, 1.6, -1.0))
+        self.scene.add(ob_node)
+        self.floor_state.rhythm_obelisk_node = ob_node
+        self.floor_state.rhythm_obelisk_pos  = (0.0, -1.0)  # (x, z) p/ checagem de distância
+        try:
+            self.floor_state.obstacles.append(
+                BoxHitbox(x=0.0, y=1.6, z=-1.0, width=1.2, height=3.2, depth=1.2))
+        except Exception:
+            pass
 
         _build_stairs(self.scene, self.floor_state)
         gm = make_box_mesh("gate_r", 3.2, 2.0, 0.3, color=(0.1,0.4,0.5))
@@ -1665,8 +1674,8 @@ class Game:
         for cx, cz in [(-8.0,-2.0),(-8.0,2.0),(8.0,-2.0),(8.0,2.0)]:
             _add_tower_deco(self.scene, self.floor_state, "crystal", position=(cx, 0.0, cz), scale=(1.0,1.0,1.0), collision_radius=0.9)
 
-        self.hud.add_popup("Combate Rítmico! ENTER pra começar", 4.0, (100,255,200))
-        self.hud.add_popup("[Z] quando chegar na barra 'amarela'!", 4.0, (200,255,220))
+        self.hud.add_popup("Um obelisco antigo brilha no centro da sala...", 4.0, (100,255,200))
+        self.hud.add_popup("[E/Enter] perto dele para começar o ritual rítmico", 4.5, (200,255,220))
 
     def _build_floor_gauntlet(self):
         pygame.mixer.music.stop()
@@ -2217,87 +2226,261 @@ class Game:
 
     # ── Rhythm game ───────────────────────────────────────────────────────────
 
+    # ── Beatmap fixo (60s), alinhado ao BPM real da música ──────────────────
+    # rythm.mp3 está em 114 BPM -> 1 batida = 60/114 ≈ 0.5263s.
+    # As notas são geradas em SUBDIVISÕES da batida (1, 1/2, 1/4) para que
+    # caiam sempre em cima do tempo da música, mesmo quando a seção fica
+    # mais difícil/densa. Cada item: (tempo_em_segundos, lane)
+    # onde lane: 0=←  1=↓  2=↑  3=→
+    RHYTHM_BPM = 114.0
+
+    @classmethod
+    def _generate_rhythm_beatmap(cls):
+        beat = 60.0 / cls.RHYTHM_BPM   # duração de 1 batida em segundos (~0.526s)
+        notes = []
+        start_t = beat * 4    # pequeno respiro (4 batidas) antes da primeira seta
+
+        def _run(t0, end_t, subdivision, lane_cycle, hold_period=0):
+            """Gera notas a cada `subdivision` batidas a partir de t0.
+            hold_period > 0 → a cada N notas normais, uma hold é inserida.
+            Nunca duas holds seguidas; hold e a nota seguinte são sempre normais.
+            """
+            step = beat * subdivision
+            hold_dur = round(beat * 1.8, 4)   # duração da hold (1.8 batidas)
+            i = 0
+            t = t0
+            since_hold = 0        # quantas notas normais desde a última hold
+            skip_next  = False    # garante 1 nota normal após cada hold
+            while t < end_t:
+                lane = lane_cycle[i % len(lane_cycle)]
+                is_hold = (
+                    hold_period > 0
+                    and not skip_next
+                    and since_hold >= hold_period
+                )
+                if is_hold:
+                    dur = hold_dur
+                    since_hold = 0
+                    skip_next  = True   # próxima obrigatoriamente normal
+                else:
+                    dur = 0.0
+                    since_hold += 1
+                    skip_next   = False
+                notes.append((round(t, 4), lane, dur))
+                i += 1
+                t = t0 + i * step
+            return t
+
+        # Seção 1 (aquecimento): hold a cada 6 notas normais (bem espaçado)
+        t = _run(start_t, beat * 55, 1.0,
+                 [0, 2, 1, 3, 0, 1, 3, 2], hold_period=6)
+
+        # Seção 2 (intermediária): hold a cada 4 notas normais
+        t = _run(t, beat * 116, 1.0,
+                 [1, 3, 0, 2, 3, 1, 0, 2], hold_period=4)
+
+        # Seção 3 (clímax): sem holds — rápido demais
+        beat_count = 0
+        lane_cycle3 = [2, 0, 3, 1, 2, 3, 0, 1]
+        idx3 = 0
+        end_t3 = beat * 165
+        while t < end_t3:
+            sub  = 1.0 if (beat_count % 2 == 0) else 0.5
+            lane = lane_cycle3[idx3 % len(lane_cycle3)]
+            notes.append((round(t, 4), lane, 0.0))
+            beat_count += 1
+            idx3 += 1
+            t += beat * sub
+
+        return notes
+
     def _start_rhythm_game(self):
-        self.rhythm_active     = True
-        self.rhythm_score      = 0
-        self.rhythm_total      = 8
-        self.rhythm_beats      = [1.0,1.5,2.0,2.7,3.2,4.0,4.5,5.0]
+        beatmap = self._generate_rhythm_beatmap()
+        self.rhythm_notes = [
+            {"time": bt, "lane": lane, "duration": dur,
+             "hit_result": None, "hold_progress": 0.0}
+            for bt, lane, dur in beatmap
+        ]
+        self.rhythm_duration   = 90.0
         self.rhythm_timer      = 0.0
-        self.rhythm_hit        = [False] * len(self.rhythm_beats)
-        n_en                   = len(self.rhythm_enemies)
-        self.rhythm_targets    = [i % n_en for i in range(len(self.rhythm_beats))]
-        self.rhythm_active_idx = -1
-        for re_ in self.rhythm_enemies:
-            re_["enemy"].dead = False
-            re_["enemy"].stats.hp = re_["enemy"].stats.max_hp
-            re_["node"].visible = True
-            _restore_colors(re_)
-        self.game_mode = "rhythm"; self.input.capture_mouse(False)
-        self.hud.add_popup("Pressione Z quando chegar na barra amarela!", 2.0, (100,255,200))
+        self.rhythm_fall_time  = 1.6   # segundos que uma nota leva para cair até a linha de acerto
+        # Janelas de timing (segundos de tolerância em torno do tempo exato da nota)
+        self.rhythm_window_perfect = 0.05
+        self.rhythm_window_good    = 0.12
+        self.rhythm_window_ok      = 0.20
+        self.rhythm_points_table   = {"perfect": 3, "good": 2, "ok": 1, "miss": 0}
+        self.rhythm_max_points     = len(self.rhythm_notes) * self.rhythm_points_table["perfect"]
+        self.rhythm_score_points   = 0
+        self.rhythm_last_feedback       = None
+        self.rhythm_last_feedback_timer = 0.0
+        self.rhythm_lane_flash          = [None, None, None, None]
+        self.rhythm_hold_keys           = {}
+
+        pygame.mixer.music.stop()
+        pygame.mixer.music.load(os.path.join(_HERE, "assets", "music", "rythm.mp3"))
+        pygame.mixer.music.play()
+
+        self.game_mode = "rhythm"
+        self.input.capture_mouse(False)
+        self.hud.add_popup("Pressione ← ↓ ↑ → no tempo certo!", 2.5, (100,255,200))
+
+    def _rhythm_abort(self):
+        """Cancela o minigame (ESC) sem completar — volta pro explore."""
+        pygame.mixer.music.stop()
+        pygame.mixer.music.load(os.path.join(_HERE, "assets", "music", "tower.mp3"))
+        pygame.mixer.music.play()
+        self.game_mode = "explore"
+        self.input.capture_mouse(True)
+        self.hud.add_popup("Ritual interrompido. Volte ao obelisco para tentar de novo.", 3.0, (255,200,140))
+
+    def _rhythm_set_feedback(self, label, color):
+        self.rhythm_last_feedback       = (label, color)
+        self.rhythm_last_feedback_timer = 0.8
+
+    def _rhythm_classify(self, dt_abs):
+        if dt_abs <= self.rhythm_window_perfect: return "perfect"
+        if dt_abs <= self.rhythm_window_good:    return "good"
+        if dt_abs <= self.rhythm_window_ok:      return "ok"
+        return None
+
+    def _trigger_lane_flash(self, lane_idx, color, duration):
+        """Acende o brilho de fundo de uma lane por `duration` segundos."""
+        self.rhythm_lane_flash[lane_idx] = [color, duration]
+
+    def _rhythm_arrow_press(self, lane_name):
+        lane_map = {"left": 0, "down": 1, "up": 2, "right": 3}
+        lane = lane_map[lane_name]
+        t    = self.rhythm_timer
+
+        # Encontra a nota não resolvida mais próxima no tempo, na mesma lane,
+        # dentro da janela mais permissiva (OK).
+        best_idx, best_dt = None, None
+        for idx, note in enumerate(self.rhythm_notes):
+            if note["hit_result"] not in (None,) or note["lane"] != lane:
+                continue
+            dt_abs = abs(note["time"] - t)
+            if dt_abs <= self.rhythm_window_ok and (best_dt is None or dt_abs < best_dt):
+                best_idx, best_dt = idx, dt_abs
+
+        if best_idx is None:
+            self._rhythm_set_feedback("Miss", (255, 90, 90))
+            self._trigger_lane_flash(lane, (255, 60, 60), 0.18)
+            return
+
+        note   = self.rhythm_notes[best_idx]
+        result = self._rhythm_classify(best_dt)
+
+        if note.get("duration", 0.0) > 0.0:
+            # Hold note — registra início; resultado final vem ao soltar
+            self.rhythm_hold_keys[lane] = {
+                "note_idx": best_idx,
+                "held":     0.0,
+                "required": note["duration"],
+                "quality":  result,
+            }
+            note["hit_result"] = "holding"
+            # Brilho ciano persistente enquanto segura
+            self._trigger_lane_flash(lane, (100, 255, 255), 9999.0)
+        else:
+            # Nota normal
+            note["hit_result"] = result
+            self.rhythm_score_points += self.rhythm_points_table[result]
+            feedback_colors = {
+                "perfect": ("Perfect!", (120, 255, 200)),
+                "good":    ("Good",     (200, 255, 140)),
+                "ok":      ("OK",       (255, 220, 120)),
+            }
+            label, color = feedback_colors[result]
+            self._rhythm_set_feedback(label, color)
+            self._trigger_lane_flash(lane, color, 0.25)
+
+    def _rhythm_hold_release(self, lane_idx):
+        """Chamado quando o jogador solta a tecla de uma hold note."""
+        hold = self.rhythm_hold_keys.pop(lane_idx, None)
+        if hold is None:
+            return
+
+        note  = self.rhythm_notes[hold["note_idx"]]
+        ratio = hold["held"] / max(hold["required"], 0.001)
+
+        if ratio >= 0.85:
+            result = hold["quality"]
+            self.rhythm_score_points += self.rhythm_points_table[result]
+            feedback_colors = {
+                "perfect": ("Perfect!", (120, 255, 200)),
+                "good":    ("Good!",    (200, 255, 140)),
+                "ok":      ("OK",       (255, 220, 120)),
+            }
+            label, color = feedback_colors[result]
+            self._rhythm_set_feedback(label, color)
+            self._trigger_lane_flash(lane_idx, color, 0.3)
+            note["hit_result"] = result
+        else:
+            # Soltou cedo → miss
+            note["hit_result"] = "miss"
+            self._rhythm_set_feedback("Solto cedo!", (255, 90, 90))
+            self._trigger_lane_flash(lane_idx, (255, 60, 60), 0.25)
+
+        # Apaga o brilho persistente do hold
+        self.rhythm_lane_flash[lane_idx] = None
 
     def _update_rhythm(self, dt):
-        if not self.rhythm_active: return
         self.rhythm_timer += dt
         t = self.rhythm_timer
 
-        active_idx = -1
-        for i, bt in enumerate(self.rhythm_beats):
-            if not self.rhythm_hit[i] and (bt - self.rhythm_warn_window) <= t <= (bt + self.rhythm_window):
-                active_idx = self.rhythm_targets[i]; break
-        if active_idx != self.rhythm_active_idx:
-            for re_ in self.rhythm_enemies: _restore_colors(re_)
-            if active_idx >= 0:
-                _flash_color(self.rhythm_enemies[active_idx], (1.0, 0.95, 0.2))
-            self.rhythm_active_idx = active_idx
+        # Feedback timer
+        if self.rhythm_last_feedback_timer > 0.0:
+            self.rhythm_last_feedback_timer -= dt
+            if self.rhythm_last_feedback_timer <= 0.0:
+                self.rhythm_last_feedback = None
 
-        for i, bt in enumerate(self.rhythm_beats):
-            if not self.rhythm_hit[i] and t > bt + self.rhythm_window + 0.2:
-                self.rhythm_hit[i] = True; self._rhythm_player_damage()
-        if not self.rhythm_active: return
+        # Lane flash timers
+        for i in range(4):
+            fl = self.rhythm_lane_flash[i]
+            if fl is not None:
+                fl[1] -= dt
+                if fl[1] <= 0.0:
+                    self.rhythm_lane_flash[i] = None
 
-        if t > self.rhythm_beats[-1] + 1.0:
-            self.rhythm_active     = False
-            self.rhythm_active_idx = -1
-            for re_ in self.rhythm_enemies: _restore_colors(re_)
-            pct = self.rhythm_score / self.rhythm_total
-            if pct >= 0.5:
-                self.floor_state.rhythm_done  = True
-                self.floor_state.stair_locked = False
-                self._disable_barrier()
-                for re_ in self.rhythm_enemies:
-                    re_["enemy"].dead = True; re_["node"].visible = False
-                self.hud.add_popup(f"Ritmo! {self.rhythm_score}/{self.rhythm_total} – Suba!", 3.0, (100,255,200))
-            else:
-                self.hud.add_popup(f"Muito fora do ritmo! ({self.rhythm_score}/{self.rhythm_total}) Tente de novo.", 3.0, (255,100,100))
-            self.game_mode = "explore"; self.input.capture_mouse(True)
+        # Avança hold notes em progresso
+        for lane_idx, hold in list(self.rhythm_hold_keys.items()):
+            hold["held"] += dt
+            note = self.rhythm_notes[hold["note_idx"]]
+            note["hold_progress"] = min(1.0, hold["held"] / max(hold["required"], 0.001))
+            # Se o tempo da nota acabou (+ margem) sem soltar → completa automaticamente
+            note_end = note["time"] + note["duration"]
+            if t > note_end + 0.3:
+                self._rhythm_hold_release(lane_idx)
 
-    def _rhythm_player_damage(self, amount=8):
-        p = self.player
-        p.stats.hp = max(0, p.stats.hp - amount)
-        p.is_taking_damage = True; p.reaction_timer = p.REACTION_TIME
-        self.hud.add_popup(f"-{amount} HP", 1.0, (255,100,100))
-        if p.stats.hp <= 0:
-            self.rhythm_active = False; self.rhythm_active_idx = -1
-            for re_ in self.rhythm_enemies: _restore_colors(re_)
-            self._trigger_death()
+        # Miss automático para notas normais que passaram da janela
+        for note in self.rhythm_notes:
+            if note["hit_result"] is None and (t - note["time"]) > self.rhythm_window_ok:
+                note["hit_result"] = "miss"
 
-    def _rhythm_press(self):
-        if not self.rhythm_active: return
-        t = self.rhythm_timer
-        for i, bt in enumerate(self.rhythm_beats):
-            if not self.rhythm_hit[i] and abs(t - bt) <= self.rhythm_window:
-                self.rhythm_hit[i] = True; self.rhythm_score += 1
-                target = self.rhythm_enemies[self.rhythm_targets[i]]
-                e = target["enemy"]
-                if not e.dead:
-                    damage = max(1, self.player.stats.atk + random.randint(-2,2) - e.stats.defense)
-                    e.stats.take_damage(damage)
-                    self.hud.add_popup(f"-{damage} HP!", 1.0, (255,200,140))
-                    if not e.stats.is_alive():
-                        e.dead = True; target["node"].visible = False
-                self.hud.add_popup("BEAT!", 0.5, (50,255,180)); return
-        self.hud.add_popup("Miss...", 0.5, (255,80,80))
-        self._rhythm_player_damage(amount=4)
+        if t >= self.rhythm_duration:
+            # Finaliza holds abertas antes de encerrar
+            for lane_idx in list(self.rhythm_hold_keys.keys()):
+                self._rhythm_hold_release(lane_idx)
+            self._finish_rhythm_game()
+
+    def _finish_rhythm_game(self):
+        max_pts = max(1, self.rhythm_max_points)
+        pct = self.rhythm_score_points / max_pts
+
+        pygame.mixer.music.stop()
+        pygame.mixer.music.load(os.path.join(_HERE, "assets", "music", "tower.mp3"))
+        pygame.mixer.music.play()
+
+        if pct >= 0.70:
+            self.floor_state.rhythm_done  = True
+            self.floor_state.stair_locked = False
+            self._disable_barrier()
+            self.hud.add_popup(f"Ritual completo! {pct*100:.0f}% – Suba as escadas!", 3.5, (100,255,200))
+        else:
+            self.hud.add_popup(f"Apenas {pct*100:.0f}%... O obelisco exige 70%. Tente de novo!", 3.5, (255,140,140))
+
+        self.game_mode = "explore"
+        self.input.capture_mouse(True)
 
     # ── Input ─────────────────────────────────────────────────────────────────
 
@@ -2319,9 +2502,14 @@ class Game:
             return
 
         if self.game_mode == "rhythm":
-            if self.input.key_pressed("z"):     self._rhythm_press()
+            lane_map = {"left": 0, "down": 1, "up": 2, "right": 3}
+            for lane_name, lane_idx in lane_map.items():
+                if self.input.key_pressed(lane_name):
+                    self._rhythm_arrow_press(lane_name)
+                if hasattr(self.input, "key_released") and self.input.key_released(lane_name):
+                    self._rhythm_hold_release(lane_idx)
             if self.input.key_pressed("escape"):
-                self.rhythm_active = False; self.game_mode = "explore"; self.input.capture_mouse(True)
+                self._rhythm_abort()
             return
 
         if self.game_mode == "explore":
@@ -2343,8 +2531,6 @@ class Game:
                 if self.input.key_pressed(str(n)): self._handle_submenu_number(n)
             if self.input.key_pressed("e") or self.input.key_pressed("return"):
                 self._interact()
-            if self.current_floor == self.FLOOR_RHYTHM and not self.floor_state.rhythm_done:
-                if self.input.key_pressed("return"): self._start_rhythm_game()
 
         elif self.game_mode in ("menu", "combat"):
             self.menus.handle_input(self.input)
@@ -2415,6 +2601,13 @@ class Game:
             if pz < -10.0 and not self.floor_state.stair_locked:
                 self._advance_floor()
                 return
+            ob_pos = getattr(self.floor_state, 'rhythm_obelisk_pos', None)
+            if (ob_pos is not None and not self.floor_state.rhythm_done
+                    and self.game_mode == "explore"):
+                dist = ((px - ob_pos[0]) ** 2 + (pz - ob_pos[1]) ** 2) ** 0.5
+                if dist < 2.2:
+                    self._start_rhythm_game()
+                    return
         if self.current_floor == self.FLOOR_GAUNTLET:
             if pz < -10.0 and not self.floor_state.stair_locked:
                 self._advance_floor()
@@ -3281,20 +3474,211 @@ class Game:
 
     def _draw_rhythm_hud(self, h):
         sw, sh = self.screen_w, self.screen_h
-        bar_x, bar_y, bar_w, bar_h = sw//2 - 300, sh - 140, 600, 30
-        h.draw_rect(bar_x, bar_y, bar_w, bar_h, (0.05,0.12,0.12))
-        if self.rhythm_beats:
-            total_t = self.rhythm_beats[-1] + 1.0
-            cx = bar_x + int((self.rhythm_timer / total_t) * bar_w)
-            h.draw_rect(cx-3, bar_y, 6, bar_h, (0.2,1.0,0.6))
-        total_t = (self.rhythm_beats[-1] + 1.0) if self.rhythm_beats else 1.0
-        for i, bt in enumerate(self.rhythm_beats):
-            bx    = bar_x + int((bt / total_t) * bar_w)
-            color = (0.0,0.6,0.0) if self.rhythm_hit[i] else (1.0,0.6,0.0)
-            h.draw_rect(bx-4, bar_y, 8, bar_h, color)
-        h.draw_text(f"Score: {self.rhythm_score}/{self.rhythm_total}", sw//2, sh-170, 18, (100,255,200), center=True)
-        h.draw_text("[Z] no beat!", sw//2, sh-100, 16, (200,255,220), center=True)
+        lane_names  = ["←", "↓", "↑", "→"]
+        lane_colors = [(0.85,0.25,0.35), (0.25,0.85,0.45), (0.85,0.75,0.20), (0.25,0.55,0.95)]
+        n_lanes  = 4
+        lane_w   = 64
+        gap      = 14
+        total_w  = n_lanes * lane_w + (n_lanes - 1) * gap
+        base_x   = sw // 2 - total_w // 2
+        hit_y    = sh - 130
+        track_h  = sh - 220
+        track_top = hit_y - track_h
 
+        # Monta mapa lane → progresso de hold ativo (para o indicador fixo)
+        _hold_progress_by_lane = {}
+        for _li, _hd in getattr(self, "rhythm_hold_keys", {}).items():
+            _hold_progress_by_lane[_li] = min(1.0, _hd["held"] / max(_hd["required"], 0.001))
+
+        for i in range(n_lanes):
+            lx = base_x + i * (lane_w + gap)
+
+            # Fundo base da trilha
+            h.draw_rect(lx, track_top, lane_w, track_h, (0.05, 0.05, 0.08), alpha=0.55)
+
+            # ── Lane flash (brilho de acerto / hold) ──────────────────────
+            fl = getattr(self, "rhythm_lane_flash", [None]*4)[i]
+            if fl is not None:
+                raw_col, fl_timer = fl[0], fl[1]
+                intensity = min(1.0, fl_timer * 5.0)
+                if isinstance(raw_col[0], int):
+                    fc = (raw_col[0]/255.0 * intensity,
+                          raw_col[1]/255.0 * intensity,
+                          raw_col[2]/255.0 * intensity)
+                else:
+                    fc = (raw_col[0] * intensity, raw_col[1] * intensity, raw_col[2] * intensity)
+                h.draw_rect(lx, track_top, lane_w, track_h, fc, alpha=0.45 * intensity)
+
+            # ── Indicador fixo de hold na linha de acerto ─────────────────
+            if i in _hold_progress_by_lane:
+                prog = _hold_progress_by_lane[i]
+
+                # Fundo escuro da barra (largura total da lane)
+                bar_h = 16
+                bar_y = hit_y - bar_h // 2
+                h.draw_rect(lx + 2, bar_y, lane_w - 4, bar_h,
+                            (0.05, 0.05, 0.08), alpha=0.92)
+
+                # Preenchimento da barra — vai de ciano para branco conforme enche
+                fill_w = int((lane_w - 4) * prog)
+                if fill_w > 0:
+                    # Cor: ciano no início, branco puro no fim
+                    r = 0.4 + 0.6 * prog
+                    g = 1.0
+                    b = 1.0 - 0.2 * prog
+                    h.draw_rect(lx + 2, bar_y, fill_w, bar_h,
+                                (r, g, b), alpha=0.97)
+
+                # Borda da barra
+                h.draw_rect(lx + 2, bar_y,     lane_w - 4, 2,  (1.0, 1.0, 1.0), alpha=0.6)
+                h.draw_rect(lx + 2, bar_y + bar_h - 2, lane_w - 4, 2, (1.0, 1.0, 1.0), alpha=0.6)
+
+                # Texto "SOLTE!" aparece quando barra está quase cheia (> 80%)
+                if prog >= 0.80:
+                    h.draw_text("SOLTE!", lx + lane_w // 2, bar_y - 18,
+                                14, (255, 255, 100), bold=True, center=True)
+                else:
+                    h.draw_text("SEGURE", lx + lane_w // 2, bar_y - 18,
+                                12, (160, 240, 240), bold=False, center=True)
+            else:
+                # Linha de acerto normal
+                h.draw_rect(lx, hit_y - 4, lane_w, 8, lane_colors[i], alpha=0.9)
+
+            h.draw_text(lane_names[i], lx + lane_w // 2, hit_y + 26,
+                        22, (230, 230, 230), bold=True, center=True)
+
+        t        = self.rhythm_timer
+        note_h   = 18
+
+        # ── HUD de progresso (topo central) ───────────────────────────────
+        _duration  = self.rhythm_duration
+        _max_pts   = max(1, self.rhythm_max_points)
+        _pct       = self.rhythm_score_points / _max_pts
+        _time_left = max(0.0, _duration - t)
+
+        _panel_w = 320
+        _panel_x = sw // 2 - _panel_w // 2
+        _panel_y = 10
+
+        # Fundo do painel
+        h.draw_rect(_panel_x, _panel_y, _panel_w, 62, (0.03, 0.03, 0.08), alpha=0.82)
+
+        # Tempo restante
+        _mins = int(_time_left) // 60
+        _secs = int(_time_left) % 60
+        h.draw_text(f"{_mins}:{_secs:02d}",
+                    sw // 2, _panel_y + 6,
+                    15, (200, 220, 255), bold=False, center=True)
+
+        # Barra de progresso da música
+        _bar_x = _panel_x + 10
+        _bar_y = _panel_y + 26
+        _bar_w = _panel_w - 20
+        _bar_h = 10
+        _prog_frac = min(1.0, t / _duration)
+        h.draw_rect(_bar_x, _bar_y, _bar_w, _bar_h, (0.12, 0.12, 0.22), alpha=0.92)
+        if _prog_frac > 0:
+            h.draw_rect(_bar_x, _bar_y, int(_bar_w * _prog_frac), _bar_h,
+                        (0.35, 0.55, 1.0), alpha=0.95)
+
+        # Score atual vs meta 70%
+        _score_col = (120, 255, 160) if _pct >= 0.70 else (255, 200, 80)
+        h.draw_text(f"Score: {_pct*100:.0f}%   |   Meta: 70%",
+                    sw // 2, _panel_y + 46,
+                    14, _score_col, bold=True, center=True)
+        # ── fim HUD de progresso ──────────────────────────────────────────
+
+        end_mk_h = 12   # altura do marcador de fim
+
+        for note in self.rhythm_notes:
+            if note["hit_result"] not in (None, "holding"):
+                continue
+
+            lane = note["lane"]
+            lx   = base_x + lane * (lane_w + gap)
+            col  = lane_colors[lane]
+            dur  = note.get("duration", 0.0)
+
+            # dt para a CABEÇA e para o FIM
+            dt_head = note["time"] - t          # positivo = ainda vai chegar
+            dt_end  = (note["time"] + dur) - t  # positivo = fim ainda vai chegar
+
+            head_visible = -0.3 < dt_head <= self.rhythm_fall_time
+            end_visible  = dur > 0.0 and -0.3 < dt_end <= self.rhythm_fall_time
+            holding_now  = note["hit_result"] == "holding"
+
+            if not head_visible and not end_visible and not holding_now:
+                continue
+
+            frac_head = 1.0 - (dt_head / self.rhythm_fall_time)
+            ny_head   = int(track_top + frac_head * track_h)
+
+            if dur == 0.0:
+                # ── NOTA NORMAL ───────────────────────────────────────────
+                if not head_visible:
+                    continue
+                h.draw_rect(lx + 4, ny_head - note_h // 2,
+                            lane_w - 8, note_h, col)
+                continue
+
+            # ── HOLD NOTE ────────────────────────────────────────────────
+
+            # Posição Y do marcador de fim (desce como nota independente)
+            frac_end       = 1.0 - (dt_end / self.rhythm_fall_time)
+            ny_end         = int(track_top + frac_end * track_h)
+            ny_end_clamped = max(track_top, min(ny_end, track_top + track_h))
+
+            # Topo do corpo
+            if dt_end > self.rhythm_fall_time:
+                body_top = track_top   # fim ainda não entrou na tela
+            else:
+                body_top = ny_end_clamped
+
+            # Base do corpo
+            if holding_now:
+                body_bot = hit_y       # ancorado na linha de acerto
+            else:
+                body_bot = ny_head - note_h // 2
+
+            body_h  = max(0, body_bot - body_top)
+            body_cx = lx + lane_w // 2
+            body_w  = 20
+
+            # Corpo dourado
+            if body_h > 0:
+                h.draw_rect(body_cx - body_w // 2 - 2, body_top,
+                            body_w + 4, body_h,
+                            (0.0, 0.0, 0.0), alpha=0.65)
+                h.draw_rect(body_cx - body_w // 2, body_top,
+                            body_w, body_h,
+                            (0.85, 0.65, 0.10), alpha=0.88)
+                h.draw_rect(body_cx - 2, body_top,
+                            4, body_h,
+                            (1.0, 0.95, 0.55), alpha=0.75)
+
+            # Marcador de FIM (branco-dourado, passa pelo NGC = hora de soltar)
+            if end_visible or (holding_now and dt_end > -0.3):
+                h.draw_rect(lx + 1, ny_end_clamped - end_mk_h // 2 - 1,
+                            lane_w - 2, end_mk_h + 2,
+                            (0.0, 0.0, 0.0), alpha=0.80)
+                h.draw_rect(lx + 2, ny_end_clamped - end_mk_h // 2,
+                            lane_w - 4, end_mk_h,
+                            (1.0, 0.93, 0.42), alpha=0.98)
+                h.draw_rect(lx + 5, ny_end_clamped - 2,
+                            lane_w - 10, 4,
+                            (0.28, 0.12, 0.0), alpha=0.88)
+
+            # Cabeça dourada (só enquanto não foi pressionada)
+            if head_visible and not holding_now:
+                h.draw_rect(lx + 2, ny_head - note_h // 2 - 1,
+                            lane_w - 4, note_h + 2,
+                            (0.0, 0.0, 0.0), alpha=0.80)
+                h.draw_rect(lx + 3, ny_head - note_h // 2,
+                            lane_w - 6, note_h,
+                            (1.0, 0.80, 0.10), alpha=1.0)
+                h.draw_rect(lx + 7, ny_head - note_h // 2 + 3,
+                            lane_w - 14, note_h - 6,
+                            (1.0, 0.97, 0.70), alpha=0.70)
     def _draw_menu_background(self, hud):
         sw, sh = self.screen_w, self.screen_h
         hud.draw_rect(0, 0, sw, sh, (0.03,0.03,0.08))
