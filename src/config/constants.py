@@ -19,7 +19,7 @@ HEARTLESS_Y_OFFSET = -0.5  # quanto o Heartless fica acima/abaixo do chão (nega
 AERIALKNOCKER_Y_OFFSET = 0.0  # quanto o AerialKnocker fica acima/abaixo do world_pos
 
 
-
+SUBARU_TARGET_HEIGHT = 1.8
 # Heartless terrestre animado (heartless_idle.glb – mesma origem Mixamo do Subaru)
 HEARTLESS_TARGET_HEIGHT = 1.8  # altura alvo em metros para auto-scale (aumente este valor para um Heartless maior)
 
@@ -40,13 +40,14 @@ AERIALKNOCKER_CLIP_NAMES = {"idle": "Swim_Idle_Loop", "walking": "Swim_Idle_Loop
 EMILIA_TARGET_HEIGHT    = 1.7
 EMILIA_Y_OFFSET         = 0.0  # deitada no chão: Y sobe para ficar sobre a superfície
 EMILIA_CLIP_NAMES       = {"idle": "mixamo.com"}  # nome real do clipe no GLB
-EMILIA_MANUAL_SCALE     = 0.017  # escala manual: GLB tem scale:100 nos nodes, auto_scale falha
+EMILIA_MANUAL_SCALE     = 0.75  # escala manual: GLB tem scale:100 nos nodes, auto_scale falha
 
 # Marluxia animado – mesmo pipeline da Beatrice/AerialKnocker (NGC Beatrice)
 MARLUXIA_TARGET_HEIGHT  = 2.5  # aumentado de 1.9 → 2.5 (ajuste à vontade)
 MARLUXIA_Y_OFFSET       = 0.0
 MARLUXIA_CLIP_NAMES     = {"idle": None}  # preenchido dinamicamente
 
+BEATRICE_CLIP_NAMES = {"idle": "Swim_Idle_Loop"}
 
 
 BEATRICE_TARGET_HEIGHT = 1.6  # Beatrice é um pouco mais baixa que o Subaru (1.8)

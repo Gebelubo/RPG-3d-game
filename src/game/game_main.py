@@ -26,7 +26,6 @@ from OpenGL.GL import (
 import numpy as np
 sys.path.insert(0, _HERE)
 
-from src.engine.math3d        import vec3
 from src.engine.shader        import ShaderProgram
 from src.engine.mesh          import ProceduralMesh, make_cube, make_plane, make_sphere
 from src.engine.texture       import Texture, ProceduralTexture
@@ -34,7 +33,6 @@ from src.engine.camera        import Camera
 from src.engine.scene         import Scene, SceneNode
 from src.engine.skinned_mesh  import SkinnedMesh
 from src.engine.input_manager import InputManager
-from src.game.rpg_data     import Player, Enemy, SPELL_DB, SPELL_LIST, ITEM_DB
 from src.hud               import HUD
 from src.menu              import Menu, MenuItem, MenuManager
 from src.engine.obstacle    import BoxHitbox
@@ -42,23 +40,16 @@ from src.engine.math3d        import mat3_normal_matrix
 from src.hud                  import HUD
 from src.menu                 import Menu, MenuItem, MenuManager
 from src.engine.sound_effects import Effects
+from src.entities.enemy import Enemy
+from src.entities.player import Player
+from src.db.spell import SPELL_DB, SPELL_LIST
+from src.db.item import ITEM_DB
 
-from src.game.helpers import (load_game,
-                              _load_obj_model,
-                              _load_skinned_beatrice,
-                              _load_skinned_emilia,
-                              _load_skinned_player,
-                              _build_stairs,
-                              make_box_mesh,
-                              _add_tower_deco,
-                              _spawn_heartless,
-                              save_game,
-                              _load_skinned_marluxia,
-                              _stair_step_bounds
-                              )
+from src.game.helper import Helper
 
 
 from src.game.floor_state import FloorState
+
 
 
 
@@ -77,6 +68,7 @@ class Game:
         self._init_gl()
         self._init_shaders()
         self._init_game_state()
+        self._helper = Helper()
 
     # ── Init ─────────────────────────────────────────────────────────────────
 
@@ -371,7 +363,7 @@ class Game:
         self.player.velocity  = [0,0,0]
         self.player.on_ground = True
 
-        skinned_node, skinned_mesh, anim_controller = _load_skinned_player(position=pos, rotation=(0, 180, 0))
+        skinned_node, skinned_mesh, anim_controller = self._helper.load_skinned_player(position=pos, rotation=(0, 180, 0))
         if skinned_node is not None:
             self.player_node         = skinned_node
             self.player_skinned_mesh = skinned_mesh
@@ -379,7 +371,7 @@ class Game:
         else:
             self.player_skinned_mesh = None
             self.player_anim         = None
-            self.player_node = _load_obj_model(
+            self.player_node = self._helper._load_obj_model(
                 os.path.join(_HERE, "assets", "models", "Subaru", "Subaru.obj"),
                 position=pos, rotation=(0, 180, 0), scale=(1.0, 1.0, 1.0)
             )
@@ -390,7 +382,7 @@ class Game:
             self.scene.add(self.player_node)
 
         bx, by, bz = pos[0] + 1.2, pos[1] + BEATRICE_Y_OFFSET, pos[2] - 0.5
-        beat_skinned_node, beat_skinned_mesh, beat_anim = _load_skinned_beatrice(
+        beat_skinned_node, beat_skinned_mesh, beat_anim = self._helper.load_skinned_beatrice(
             position=(bx, by, bz), rotation=(0, 180, 0)
         )
         if beat_skinned_node is not None:
@@ -405,7 +397,7 @@ class Game:
             self.beatrice_skinned_mesh = None
             self.beatrice_anim         = None
             beat_path = os.path.join(_HERE, "assets", "models", "Beatrice", "Beatrice.obj")
-            bnode = _load_obj_model(beat_path, position=(bx, by, bz), rotation=(0, 180, 0), scale=(1.0, 1.0, 1.0))
+            bnode = self._helper._load_obj_model(beat_path, position=(bx, by, bz), rotation=(0, 180, 0), scale=(1.0, 1.0, 1.0))
             if bnode is None:
                 bv, bi = make_sphere(0.4, 10, 10)
                 bm    = ProceduralMesh("beatrice_fb", bv, bi, base_color=(0.7, 0.4, 0.9), ka=0.5, kd=0.7, ks=0.6, shininess=48)
@@ -446,7 +438,7 @@ class Game:
 
         # Porta no fundo do corredor (Norte, Z=-13)
         dv, di = make_cube(1.0)
-        dm = make_box_mesh("door",3.0,4.0,0.3, color=(0.35,0.22,0.10), ka=0.2,kd=0.7,ks=0.3,shin=24)
+        dm = self._helper.make_box_mesh("door",3.0,4.0,0.3, color=(0.35,0.22,0.10), ka=0.2,kd=0.7,ks=0.3,shin=24)
 
         door_tex = Texture(os.path.join(_HERE, "assets", "models", "tower", "doorwood.jpeg"))
 
@@ -457,7 +449,7 @@ class Game:
 
         # Barreira mágica (inicialmente invisível até abrir a porta)
         bv, bi = make_cube(1.0)
-        bm = make_box_mesh("barrier",ROOM_W-2,ROOM_H-1,0.2, color=(0.2,0.1,0.8))
+        bm = self._helper.make_box_mesh("barrier",ROOM_W-2,ROOM_H-1,0.2, color=(0.2,0.1,0.8))
         barrier_node = SceneNode("barrier", mesh=bm, position=(0,ROOM_H/2-0.5,-9.0))
         barrier_node.visible = False
         self.scene.add(barrier_node)
@@ -466,17 +458,17 @@ class Game:
 
 
         # Escada no fundo (atrás da barreira)
-        _build_stairs(self.scene, self.floor_state)
+        self._helper._build_stairs(self.scene, self.floor_state)
         self.floor_state.stair_locked = True
 
 
         # Decoração: obeliscos encostados nas paredes laterais (x=±8.5, fora da área de passagem)
         for sx in (-8.5, 8.5):
-            _add_tower_deco(self.scene, self.floor_state, "obelisk",
+            self._helper._add_tower_deco(self.scene, self.floor_state, "obelisk",
                             position=(sx, 0.0, 0.0), scale=(1.5, 1.5, 1.5),
                             collision_radius=1.2)
         # Plataforma decorativa encostada na parede sul (atrás do spawn do player)
-        _add_tower_deco(self.scene, self.floor_state, "platform",
+        self._helper._add_tower_deco(self.scene, self.floor_state, "platform",
                         position=(0.0, 0.0, 13.0), scale=(1.2, 1.2, 1.2),
                         collision_radius=1.5)
 
@@ -512,16 +504,16 @@ class Game:
                 base_color=(0.05,0.05,0.08), ka=0.5, kd=0.3, ks=0.0, shininess=1),
             position=(frame_cx, frame_cy, -8.91), rotation=(90,0,0)))
 
-        _add_tower_deco(self.scene, self.floor_state, "platform",
+        self._helper._add_tower_deco(self.scene, self.floor_state, "platform",
                         position=(7.0, 1.0, 0.0), scale=(0.8, 0.8, 0.8),
                         collision_radius=1.5)
-        _add_tower_deco(self.scene, self.floor_state, "platform",
+        self._helper._add_tower_deco(self.scene, self.floor_state, "platform",
                         position=(9.0, 4.0, -5.0), scale=(0.2, 0.2, 0.2),
                         collision_radius=1.5)
-        _add_tower_deco(self.scene, self.floor_state, "platform",
+        self._helper._add_tower_deco(self.scene, self.floor_state, "platform",
                         position=(5.0, 3.0, -3.0), scale=(0.2, 0.2, 0.2),
                         collision_radius=1.5)
-        _add_tower_deco(self.scene, self.floor_state, "platform",
+        self._helper._add_tower_deco(self.scene, self.floor_state, "platform",
                         position=(5.5, 5.0, -7.0), scale=(0.8, 0.2, 0.8),
                         collision_radius=1.5)
 
@@ -567,7 +559,7 @@ class Game:
         guard_spawns = [(-2.0, 0.5, 1.2), (-0.6, 0.5, 3.2), (0.8, 0.5, 1.2)]
         self.floor_state.puzzle_guards = []
         for gpos in guard_spawns:
-            ge, gn = _spawn_heartless(self.scene, gpos, level=3, stationary=True)
+            ge, gn = self._helper._spawn_heartless(self.scene, gpos, level=3, stationary=True)
             ge.respawns_left = 0
             ge.aggro_range   = 4.0
             self.floor_state.puzzle_guards.append((ge, gn))
@@ -611,7 +603,7 @@ class Game:
         }
 
         # ── Portal para sub-sala (parede sul) ─────────────────────────────
-        portal_mesh = make_box_mesh("parkour_portal", 2.5, 3.0, 0.3,
+        portal_mesh = self._helper.make_box_mesh("parkour_portal", 2.5, 3.0, 0.3,
                                     color=(0.2, 0.3, 0.6))
         portal_node = SceneNode("parkour_portal", mesh=portal_mesh,
                                 position=(0, 1.5, 14.5))
@@ -624,8 +616,8 @@ class Game:
         except Exception:
             pass
 
-        _build_stairs(self.scene, self.floor_state)
-        gm = make_box_mesh("gate", 3.2, 2.0, 0.3, color=(0.5,0.4,0.1))
+        self._helper._build_stairs(self.scene, self.floor_state)
+        gm = self._helper.make_box_mesh("gate", 3.2, 2.0, 0.3, color=(0.5,0.4,0.1))
         gate_node = SceneNode("gate", mesh=gm, position=(0,1.0,-10.5))
         self.scene.add(gate_node)
         self.floor_state.barrier_node = gate_node
@@ -637,7 +629,7 @@ class Game:
         self.hud.add_popup("Empurre a caixa [Z] até o botão verde e suba nela!", 6.0, (180,255,160))
         # Porta no fundo do corredor (Norte, Z=-15) — permite avançar ao subir as escadas
         dv, di = make_cube(1.0)
-        dm = make_box_mesh("door",3.0,4.0,0.3, color=(0.35,0.22,0.10), ka=0.2,kd=0.7,ks=0.3,shin=24)
+        dm = self._helper.make_box_mesh("door",3.0,4.0,0.3, color=(0.35,0.22,0.10), ka=0.2,kd=0.7,ks=0.3,shin=24)
         try:
             door_tex = Texture(os.path.join(_HERE, "assets", "models", "tower", "doorwood.jpeg"))
         except Exception:
@@ -670,7 +662,7 @@ class Game:
         self._clear_scene()
         self.floor_state.in_parkour_room = True
         pos = [0.0, 0.4, 12.0]  # Começa no topo da plataforma de entrada
-        skinned_node, skinned_mesh, anim = _load_skinned_player(position=pos, rotation=(0, 180, 0))
+        skinned_node, skinned_mesh, anim = self._helper.load_skinned_player(position=pos, rotation=(0, 180, 0))
         if skinned_node is not None:
             self.player_node = skinned_node
             self.player_skinned_mesh = skinned_mesh
@@ -711,7 +703,7 @@ class Game:
         self.scene.add(SceneNode("pk_ceil", mesh=cm, texture=ceil_tex,
                                   position=(0, ROOM_H * 2, 0), rotation=(180, 0, 0)))
 
-        entry_plat = make_box_mesh("pk_entry", 4.0, 0.4, 3.0, color=(0.45,0.40,0.35))
+        entry_plat = self._helper.make_box_mesh("pk_entry", 4.0, 0.4, 3.0, color=(0.45,0.40,0.35))
         self.scene.add(SceneNode("pk_entry", mesh=entry_plat,
                                   position=(0, 0.2, 12.0),
                                   texture=Texture(os.path.join(_HERE, "assets", "models", "tower", "tower_stone.png"))))
@@ -726,14 +718,14 @@ class Game:
         ]
         plat_tex = Texture(os.path.join(_HERE, "assets", "models", "tower", "tower_stone.png"))
         for pname, (px, py, pz), pw, ph, pd in plat_defs:
-            pm2 = make_box_mesh(pname, pw, ph, pd, color=(0.40, 0.35, 0.50))
+            pm2 = self._helper.make_box_mesh(pname, pw, ph, pd, color=(0.40, 0.35, 0.50))
             self.scene.add(SceneNode(pname, mesh=pm2, texture=plat_tex,
                                       position=(px, py, pz)))
             self.floor_state.obstacles.append(
                 BoxHitbox(x=px, y=py - ph/2, z=pz, width=pw, height=ph, depth=pd))
 
         final_tex = Texture(os.path.join(_HERE, "assets", "models", "tower", "tower_stone.png"))
-        fm = make_box_mesh("pk_final", 3.5, 0.4, 3.5, color=(0.35, 0.30, 0.50))
+        fm = self._helper.make_box_mesh("pk_final", 3.5, 0.4, 3.5, color=(0.35, 0.30, 0.50))
         # Plataforma final ajustada para manter espaçamento de 5.4 unidades
         self.scene.add(SceneNode("pk_final", mesh=fm, texture=final_tex,
                                   position=(0, 3.8, -7.2)))
@@ -741,7 +733,7 @@ class Game:
             BoxHitbox(x=0, y=3.6, z=-7.2, width=3.5, height=0.4, depth=3.5))
 
         # ── Portal de volta (parede norte/entrada) ─────────────────────
-        return_portal = make_box_mesh("pk_return", 2.5, 3.0, 0.3, color=(0.6, 0.3, 0.2))
+        return_portal = self._helper.make_box_mesh("pk_return", 2.5, 3.0, 0.3, color=(0.6, 0.3, 0.2))
         # Recua o portal de retorno para não ficar no centro da plataforma inicial
         self.scene.add(SceneNode("pk_return", mesh=return_portal, position=(0, 1.5, 14.0)))
         self.floor_state.parkour_return_pos = (0, 0.4, 14.5)
@@ -792,7 +784,7 @@ class Game:
 
         # Porta no fundo do corredor (Norte, Z=-15) — restaurada para navegação entre andares
         dv, di = make_cube(1.0)
-        dm = make_box_mesh("door",3.0,4.0,0.3, color=(0.35,0.22,0.10), ka=0.2,kd=0.7,ks=0.3,shin=24)
+        dm = self._helper.make_box_mesh("door",3.0,4.0,0.3, color=(0.35,0.22,0.10), ka=0.2,kd=0.7,ks=0.3,shin=24)
         try:
             door_tex = Texture(os.path.join(_HERE, "assets", "models", "tower", "doorwood.jpeg"))
         except Exception:
@@ -802,17 +794,17 @@ class Game:
         self.floor_state.door_node = door_node
 
         for px, pz in [(-4,0),(4,0),(0,4)]:
-            e, n = _spawn_heartless(self.scene, (px,0.5,pz), level=3)
+            e, n = self._helper._spawn_heartless(self.scene, (px,0.5,pz), level=3)
             e.respawns_left = 0
             self.floor_state.enemies.append((e,n))
         for px, pz in [(-3,2),(3,2),(0,-2)]:
-            e, n = _spawn_heartless(self.scene, (px,3.0,pz), scale=(0.0125,0.0125,0.0125), level=3, flying=True)
+            e, n = self._helper._spawn_heartless(self.scene, (px,3.0,pz), scale=(0.0125,0.0125,0.0125), level=3, flying=True)
             e.is_flying = True; e.respawns_left = 0; e.aggro_range = 8.0
             self.floor_state.enemies.append((e,n))
         self.floor_state.stair_locked = True
 
-        _build_stairs(self.scene, self.floor_state)
-        gm = make_box_mesh("gate_a", 3.2, 2.0, 0.3, color=(0.5,0.3,0.1))
+        self._helper._build_stairs(self.scene, self.floor_state)
+        gm = self._helper.make_box_mesh("gate_a", 3.2, 2.0, 0.3, color=(0.5,0.3,0.1))
         gate_node = SceneNode("gate_a", mesh=gm, position=(0,1.0,-10.5))
         self.scene.add(gate_node)
         self.floor_state.barrier_node = gate_node
@@ -829,7 +821,7 @@ class Game:
 
         # ── Obelisco central — interagir com [E/Enter] inicia o minigame ──
         obv, obi = make_cube(1.0)
-        ob_mesh = make_box_mesh("rhythm_obelisk", 1.2, 3.2, 1.2, color=(0.25, 0.55, 0.60))
+        ob_mesh = self._helper.make_box_mesh("rhythm_obelisk", 1.2, 3.2, 1.2, color=(0.25, 0.55, 0.60))
         ob_node = SceneNode("rhythm_obelisk", mesh=ob_mesh, position=(0.0, 1.6, -1.0))
         self.scene.add(ob_node)
         self.floor_state.rhythm_obelisk_node = ob_node
@@ -840,8 +832,8 @@ class Game:
         except Exception:
             pass
 
-        _build_stairs(self.scene, self.floor_state)
-        gm = make_box_mesh("gate_r", 3.2, 2.0, 0.3, color=(0.1,0.4,0.5))
+        self._helper._build_stairs(self.scene, self.floor_state)
+        gm = self._helper.make_box_mesh("gate_r", 3.2, 2.0, 0.3, color=(0.1,0.4,0.5))
         gate_node = SceneNode("gate_r", mesh=gm, position=(0,1.0,-10.5))
         self.scene.add(gate_node)
         self.floor_state.barrier_node = gate_node
@@ -849,7 +841,7 @@ class Game:
 
         # Porta no fundo do corredor (Norte, Z=-15) — permite avançar ao subir as escadas
         dv, di = make_cube(1.0)
-        dm = make_box_mesh("door",3.0,4.0,0.3, color=(0.35,0.22,0.10), ka=0.2,kd=0.7,ks=0.3,shin=24)
+        dm = self._helper.make_box_mesh("door",3.0,4.0,0.3, color=(0.35,0.22,0.10), ka=0.2,kd=0.7,ks=0.3,shin=24)
         try:
             door_tex = Texture(os.path.join(_HERE, "assets", "models", "tower", "doorwood.jpeg"))
         except Exception:
@@ -859,7 +851,7 @@ class Game:
         self.floor_state.door_node = door_node
 
         for cx, cz in [(-8.0,-2.0),(-8.0,2.0),(8.0,-2.0),(8.0,2.0)]:
-            _add_tower_deco(self.scene, self.floor_state, "crystal", position=(cx, 0.0, cz), scale=(1.0,1.0,1.0), collision_radius=0.9)
+            self._helper._add_tower_deco(self.scene, self.floor_state, "crystal", position=(cx, 0.0, cz), scale=(1.0,1.0,1.0), collision_radius=0.9)
 
         self.hud.add_popup("Um obelisco antigo brilha no centro da sala...", 4.0, (100,255,200))
         self.hud.add_popup("[E/Enter] perto dele para começar o ritual rítmico", 4.5, (200,255,220))
@@ -873,14 +865,14 @@ class Game:
 
         wave1 = []
         for px, pz in [(-5,2),(5,2),(0,0),(-3,-2),(3,-2)]:
-            e, n = _spawn_heartless(self.scene, (px,0.5,pz), level=4)
+            e, n = self._helper._spawn_heartless(self.scene, (px,0.5,pz), level=4)
             e.respawns_left = 0; wave1.append((e,n))
         wave2 = []
         for px, pz in [(-4,1),(4,1)]:
-            e, n = _spawn_heartless(self.scene, (px,0.5,pz), level=4)
+            e, n = self._helper._spawn_heartless(self.scene, (px,0.5,pz), level=4)
             e.respawns_left = 0; wave2.append((e,n))
         for px, pz in [(0,2),(-3,-1),(3,-1)]:
-            e, n = _spawn_heartless(self.scene, (px,3.0,pz), scale=(0.0125,0.0125,0.0125), level=4, flying=True)
+            e, n = self._helper._spawn_heartless(self.scene, (px,3.0,pz), scale=(0.0125,0.0125,0.0125), level=4, flying=True)
             e.is_flying = True; wave2.append((e,n)); n.visible = False
 
         self.floor_state.gauntlet_waves = [wave1, wave2]
@@ -889,10 +881,10 @@ class Game:
         self.floor_state.stair_locked   = True
 
         # Constrói escadas para permitir subir quando corredor liberar
-        _build_stairs(self.scene, self.floor_state)
+        self._helper._build_stairs(self.scene, self.floor_state)
 
         # Porta/portal visual + referência de barrier_node e hitbox (posicionada como nos outros andares)
-        pm = make_box_mesh("portal_gate", 3.2, 2.0, 0.3, color=(0.5,0.1,0.1))
+        pm = self._helper.make_box_mesh("portal_gate", 3.2, 2.0, 0.3, color=(0.5,0.1,0.1))
         gate_node = SceneNode("portal_gate", mesh=pm, position=(0,1.0,-10.5))
         self.scene.add(gate_node)
         self.floor_state.barrier_node = gate_node
@@ -905,7 +897,7 @@ class Game:
 
         # Porta no fundo do corredor (Norte, Z=-15) — permite avançar após limpar
         dv, di = make_cube(1.0)
-        dm = make_box_mesh("door",3.0,4.0,0.3, color=(0.35,0.22,0.10), ka=0.2,kd=0.7,ks=0.3,shin=24)
+        dm = self._helper.make_box_mesh("door",3.0,4.0,0.3, color=(0.35,0.22,0.10), ka=0.2,kd=0.7,ks=0.3,shin=24)
         try:
             door_tex = Texture(os.path.join(_HERE, "assets", "models", "tower", "doorwood.jpeg"))
         except Exception:
@@ -919,21 +911,21 @@ class Game:
     def _build_floor_rest(self):
         self._build_room(floor_color=(0.15,0.22,0.18), wall_color=(0.20,0.30,0.24), ceil_color=(0.12,0.20,0.16))
         self._place_player(pos=(0,0,8))
-        self.scene.add(SceneNode("altar_rest", mesh=make_box_mesh("altar_rest",4.0,0.5,2.0, color=(0.4,0.6,0.5)), position=(0,0.25,0)))
+        self.scene.add(SceneNode("altar_rest", mesh=self._helper.make_box_mesh("altar_rest",4.0,0.5,2.0, color=(0.4,0.6,0.5)), position=(0,0.25,0)))
         self.scene.light.intensity = 0.8
         self.scene.light.color     = np.array([0.7,1.0,0.8], dtype=np.float32)
         self.player.stats.hp = self.player.stats.max_hp
         self.player.stats.mp = self.player.stats.max_mp
-        save_game(self.current_floor, self.player)
+        self._helper.save_game(self.current_floor, self.player)
         self.floor_state.stair_locked = False
         self.hud.add_popup("Sala de Descanso", 3.0, (100,255,180))
         self.hud.add_popup("HP e MP recuperados! Jogo salvo.", 3.5, (180,255,200))
         self.hud.add_popup("Avance para enfrentar o boss final...", 4.5, (255,220,200))
 
         # Garante escadas e porta com textura/colisão para avançar ao boss
-        _build_stairs(self.scene, self.floor_state)
+        self._helper._build_stairs(self.scene, self.floor_state)
         dv, di = make_cube(1.0)
-        dm = make_box_mesh("boss_door",3.0,4.0,0.3, color=(0.6,0.2,0.6))
+        dm = self._helper.make_box_mesh("boss_door",3.0,4.0,0.3, color=(0.6,0.2,0.6))
         try:
             door_tex = Texture(os.path.join(_HERE, "assets", "models", "tower", "doorwood.jpeg"))
         except Exception:
@@ -959,7 +951,7 @@ class Game:
 
         # Emilia inconsciente ao fundo — tenta skinned mesh primeiro
         em_pos = (3.5, EMILIA_Y_OFFSET, -10)   # afastada do pilar central, mais perto do centro
-        em_node, em_skinned, em_anim = _load_skinned_emilia(
+        em_node, em_skinned, em_anim = self._helper.load_skinned_emilia(
             position=em_pos, rotation=(0, 0, 0)  # deitada no chão (90° no eixo X)
         )
         if em_node is not None:
@@ -969,7 +961,7 @@ class Game:
         else:
             self.emilia_skinned_mesh = None
             self.emilia_anim         = None
-            em_node = _load_obj_model(
+            em_node = self._helper._load_obj_model(
                 os.path.join(_HERE, "assets", "models", "Emilia", "emilia.obj"),
                 position=em_pos, rotation=(0, 0, 0), scale=(1.0, 1.0, 1.0)
             )
@@ -979,7 +971,7 @@ class Game:
 
         # Marluxia (boss) — tenta skinned mesh primeiro
         marl_pos = (0, MARLUXIA_Y_OFFSET, -8)
-        mk_node, mk_skinned, mk_anim = _load_skinned_marluxia(
+        mk_node, mk_skinned, mk_anim = self._helper.load_skinned_marluxia(
             position=marl_pos, rotation=(0, 180, 0)
         )
         if mk_node is not None:
@@ -997,7 +989,7 @@ class Game:
             m_path = os.path.join(_HERE, "assets", "models", "Marluxia", "Marluxia.obj")
             if os.path.exists(m_path):
                 try:
-                    loaded = _load_obj_model(m_path, position=(0, 0, -8), rotation=(90, 0, 0), scale=(0.014, 0.014, 0.014))
+                    loaded = self._helper._load_obj_model(m_path, position=(0, 0, -8), rotation=(90, 0, 0), scale=(0.014, 0.014, 0.014))
                 except Exception as exc:
                     print(f"Falha ao carregar Marluxia.obj, usando fallback: {exc}")
                     loaded = None
@@ -1022,11 +1014,11 @@ class Game:
         self.floor_state.boss_node = boss_node
         self.floor_state.enemies   = [(boss_enemy, boss_node)]
 
-        _add_tower_deco(self.scene, self.floor_state, "tower",    position=(0.0, 0.0, -13.5), scale=(1.0, 1.0, 1.0), collision_radius=1.8)
+        self._helper._add_tower_deco(self.scene, self.floor_state, "tower",    position=(0.0, 0.0, -13.5), scale=(1.0, 1.0, 1.0), collision_radius=1.8)
         for cx, cz in [(-8.5, -5.0), (8.5, -5.0), (-8.5, 5.0), (8.5, 5.0)]:
-            _add_tower_deco(self.scene, self.floor_state, "crystal", position=(cx, 0.0, cz), scale=(1.4, 1.4, 1.4), collision_radius=1.0)
+            self._helper._add_tower_deco(self.scene, self.floor_state, "crystal", position=(cx, 0.0, cz), scale=(1.4, 1.4, 1.4), collision_radius=1.0)
         for px in (-8.5, 8.5):
-            _add_tower_deco(self.scene, self.floor_state, "platform", position=(px, 0.0, 0.0), scale=(1.0, 1.0, 1.0), collision_radius=1.2)
+            self._helper._add_tower_deco(self.scene, self.floor_state, "platform", position=(px, 0.0, 0.0), scale=(1.0, 1.0, 1.0), collision_radius=1.2)
 
         self.hud.add_popup("BOSS: MARLUXIA", 3.0, (255, 80, 255))
         self.hud.add_popup("Salve Emilia!", 3.5, (255, 200, 255))
@@ -1094,7 +1086,7 @@ class Game:
 
         def continue_game():
             self.menus.clear()
-            floor = load_game(self.player)
+            floor = self._helper.load_game(self.player)
             if floor is None:
                 self.hud.add_popup("Nenhum save encontrado!", 2.0, (255,100,100))
                 self._push_title_menu(); return
@@ -1116,7 +1108,7 @@ class Game:
         def resume():
             self.menus.pop(); self.game_mode = "explore"; self.input.capture_mouse(True)
         def save():
-            save_game(self.current_floor, self.player)
+            self._helper.save_game(self.current_floor, self.player)
             self.hud.add_popup("Jogo salvo!", 2.0, (100,255,100))
             self.menus.pop(); self.game_mode = "explore"; self.input.capture_mouse(True)
         def title():
@@ -1169,7 +1161,7 @@ class Game:
     def _respawn(self):
         self.player.stats.hp = self.player.stats.max_hp
         self.player.stats.mp = self.player.stats.max_mp
-        saved_floor = load_game(self.player)
+        saved_floor = self._helper.load_game(self.player)
         floor = saved_floor if saved_floor is not None else self.current_floor
         self._build_floor(floor)
         self.game_mode = "explore"; self.input.capture_mouse(True)
@@ -1182,7 +1174,7 @@ class Game:
         if next_floor > self.FLOOR_BOSS:
             return
         def _do_transition():
-            save_game(next_floor, self.player)
+            self._helper.save_game(next_floor, self.player)
             self._build_floor(next_floor)
         self._start_fade(_do_transition, duration=0.35)
         self.hud.add_popup("Subindo para o próximo andar...", 2.0, (200,255,200))
@@ -1749,7 +1741,7 @@ class Game:
                 # Reposiciona player no meio da sala para não ficar preso
                 self.player.world_pos = [0.0, 0.5, -2.0]
                 for ep in [(-3,0.5,-5),(3,0.5,-5),(0,0.5,-3)]:
-                    e, n = _spawn_heartless(self.scene, ep, level=2)
+                    e, n = self._helper._spawn_heartless(self.scene, ep, level=2)
                     e.respawns_left = 0; self.floor_state.enemies.append((e,n))
                 self.hud.add_popup("TUTORIAL DE COMBATE!", 2.5, (255,200,80))
                 self.hud.add_popup("[Z] para atacar os Heartless!", 3.5, (200,200,255))
@@ -1944,7 +1936,7 @@ class Game:
             return 0.0
         ground = 0.0
         for i in range(STAIR_COUNT):
-            b = _stair_step_bounds(i)
+            b = self._helper._stair_step_bounds(i)
             if b["z0"] <= pz <= b["z1"]:
                 ground = max(ground, b["y1"])
         return ground
@@ -1954,7 +1946,7 @@ class Game:
         px, py, pz = p.world_pos
         pr = 0.5
         for i in range(STAIR_COUNT):
-            b = _stair_step_bounds(i)
+            b = self._helper._stair_step_bounds(i)
             if py >= b["y1"] - 0.08: continue
             cx = max(b["x0"], min(px, b["x1"]))
             cz = max(b["z0"], min(pz, b["z1"]))

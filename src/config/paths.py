@@ -20,7 +20,6 @@ SUBARU_GLB_FILES = {
 # estático. Tem um único clipe ("Swim_Idle_Loop") que toca em loop contínuo
 # enquanto ela estiver visível em cena.
 BEATRICE_GLB_PATH = os.path.join(_HERE, "assets", "models", "Beatrice", "beatrice_animation.glb")
-BEATRICE_CLIP_NAMES = {"idle": "Swim_Idle_Loop"}
 
 HEARTLESS_GLB_PATH  = os.path.join(_HERE, "assets", "models", "Heartless",     "heartless_idle.glb")
 AERIALKNOCKER_GLB_PATH  = os.path.join(_HERE, "assets", "models", "AerialKnocker", "aerialknocker_idle.glb")
