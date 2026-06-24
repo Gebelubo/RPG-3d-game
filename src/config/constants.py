@@ -43,9 +43,9 @@ EMILIA_CLIP_NAMES       = {"idle": "mixamo.com"}  # nome real do clipe no GLB
 EMILIA_MANUAL_SCALE     = 0.75  # escala manual: GLB tem scale:100 nos nodes, auto_scale falha
 
 # Marluxia animado – mesmo pipeline da Beatrice/AerialKnocker (NGC Beatrice)
-MARLUXIA_TARGET_HEIGHT  = 2.5  # aumentado de 1.9 → 2.5 (ajuste à vontade)
+MARLUXIA_TARGET_HEIGHT  = 0.05  # aumentado de 1.9 → 2.5 (ajuste à vontade)
 MARLUXIA_Y_OFFSET       = 0.0
-MARLUXIA_CLIP_NAMES     = {"idle": None}  # preenchido dinamicamente
+MARLUXIA_CLIP_NAMES     = {"idle": "mixamo.com"}  # preenchido dinamicamente
 
 BEATRICE_CLIP_NAMES = {"idle": "Swim_Idle_Loop"}
 

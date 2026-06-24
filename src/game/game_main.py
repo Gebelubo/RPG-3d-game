@@ -145,6 +145,11 @@ class Game:
         self.story_idx           = 0
         self.story_timer         = 0.0
         self.story_callback      = None
+        self.book_open = False  
+        self.book_index = 1   
+        self.book_max = 6
+        self.book_dir = ""
+        self._book_tex_cache: dict = {}
         self.credits_active      = False
         self.credits_timer       = 0.0
         self.credits_y           = 0.0
@@ -426,15 +431,11 @@ class Game:
         builders[floor_idx]()
         if show_story and floor_idx == self.FLOOR_ENTRY:
             self._start_story()
-        if floor_idx == self.FLOOR_REST:
-            self.game_mode = "story"
-            self.input.capture_mouse(False)
-            self._start_story_part2()
 
     def _build_floor_entry(self):
         pygame.mixer.music.stop()
         pygame.mixer.music.load(os.path.join(_HERE, "assets", "music", "tower.mp3"))
-        pygame.mixer.music.play()
+        pygame.mixer.music.play(-1)
         self._build_room(floor_color=(0.12,0.10,0.18), wall_color=(0.18,0.14,0.26))
         self._place_player(pos=(0,2,14))
 
@@ -483,7 +484,7 @@ class Game:
         if not pygame.mixer.music.get_busy() or getattr(self, '_current_music', '') != 'puzzle':
             pygame.mixer.music.stop()
             pygame.mixer.music.load(os.path.join(_HERE, "assets", "music", "puzzle.mp3"))
-            pygame.mixer.music.play()
+            pygame.mixer.music.play(-1)
             self._current_music = 'puzzle'
         self._build_room(floor_color=(0.18,0.16,0.28), wall_color=(0.26,0.20,0.38))
         self._place_player(pos=(0,0,12))
@@ -780,7 +781,7 @@ class Game:
     def _build_floor_aerial(self):
         pygame.mixer.music.stop()
         pygame.mixer.music.load(os.path.join(_HERE, "assets", "music", "combat.mp3"))
-        pygame.mixer.music.play()
+        pygame.mixer.music.play(-1)
         self._build_room(floor_color=(0.16,0.14,0.22), wall_color=(0.24,0.20,0.34))
         self._place_player(pos=(0,0,12))
 
@@ -861,7 +862,7 @@ class Game:
     def _build_floor_gauntlet(self):
         pygame.mixer.music.stop()
         pygame.mixer.music.load(os.path.join(_HERE, "assets", "music", "combat.mp3"))
-        pygame.mixer.music.play()
+        pygame.mixer.music.play(-1)
         self._build_room(floor_color=(0.20,0.08,0.08), wall_color=(0.28,0.12,0.12))
         self._place_player(pos=(0,0,12))
 
@@ -911,9 +912,55 @@ class Game:
         #self.hud.add_popup("Corredor Final! Sobreviva!", 3.0, (255,100,100))
 
     def _build_floor_rest(self):
+        pygame.mixer.music.stop()
+        pygame.mixer.music.load(os.path.join(_HERE, "assets", "music", "tower.mp3"))
+        pygame.mixer.music.play(-1)
         self._build_room(floor_color=(0.15,0.22,0.18), wall_color=(0.20,0.30,0.24), ceil_color=(0.12,0.20,0.16))
         self._place_player(pos=(0,0,8))
-        self.scene.add(SceneNode("altar_rest", mesh=self._helper.make_box_mesh("altar_rest",4.0,0.5,2.0, color=(0.4,0.6,0.5)), position=(0,0.25,0)))
+        rest_tex_path = os.path.join(_HERE, "assets", "models", "tower", "restfloor.avif")
+        try:
+            rest_tex = Texture(rest_tex_path)
+        except Exception:
+            rest_tex = None
+
+        # Reaplica a textura no chão e nas paredes já criadas por _build_room.
+        if rest_tex is not None:
+            for node in getattr(self.scene, "nodes", []):
+                if node.name in ("floor", "wall_n", "wall_s", "wall_e", "wall_w", "ceiling"):
+                    node.texture = rest_tex
+        
+        # ── Mesa central com livro ──
+        table_w, table_h, table_d = 2.0, 1.0, 1.2
+        table_pos = (0, table_h/2, 0)
+        table_mesh = self._helper.make_box_mesh("rest_table", table_w, table_h, table_d, color=(0.5,0.5,0.5))
+        table_node = SceneNode("rest_table", mesh=table_mesh, position=table_pos, texture=rest_tex)
+        self.scene.add(table_node)
+        self.floor_state.obstacles.append(
+            BoxHitbox(x=table_pos[0], y=table_pos[1], z=table_pos[2],
+                      width=table_w, height=table_h, depth=table_d))
+        
+        # Livro em cima da mesa
+        book_tex_path = os.path.join(_HERE, "assets", "models", "tower", "rune_crystal.png")
+        try:
+            book_tex = Texture(book_tex_path)
+        except Exception:
+            book_tex = None
+
+        book_w, book_h, book_d = 0.5, 0.1, 0.4
+        book_pos = (0, table_h + book_h/2, 0)
+        book_mesh = self._helper.make_box_mesh("rest_book", book_w, book_h, book_d, color=(0.8,0.8,0.9))
+        book_node = SceneNode("rest_book", mesh=book_mesh, position=book_pos, texture=book_tex)
+        self.scene.add(book_node)
+
+        # Guarda referência e estado do livro/relatórios no floor_state
+        self.floor_state.rest_book_node   = book_node
+        self.floor_state.rest_book_pos    = book_pos
+        self.floor_state.rest_book_radius = 1.5  # raio de interação
+        self.floor_state.report_open      = False
+        self.floor_state.report_index     = 1     # marluxia_report1.png ... report6.png
+        self.floor_state.report_max       = 6
+        self.floor_state.report_dir       = os.path.join(_HERE, "assets", "images", "marluxia_reports")
+
         self.scene.light.intensity = 0.8
         self.scene.light.color     = np.array([0.7,1.0,0.8], dtype=np.float32)
         self.player.stats.hp = self.player.stats.max_hp
@@ -935,7 +982,6 @@ class Game:
         door_node = SceneNode("boss_door", mesh=dm, position=(0,4.0,-15), texture=door_tex)
         self.scene.add(door_node)
         self.floor_state.door_node = door_node
-        # Adiciona hitbox para alinhamento e colisão na frente da porta
         try:
             self.floor_state.obstacles.append(BoxHitbox(x=0, y=2.0, z=-15.0, width=3.0, height=4.0, depth=0.5))
         except Exception:
@@ -944,7 +990,7 @@ class Game:
     def _build_floor_boss(self):
         pygame.mixer.music.stop()
         pygame.mixer.music.load(os.path.join(_HERE, "assets", "music", "boss.mp3"))
-        pygame.mixer.music.play()
+        pygame.mixer.music.play(-1)
         self._build_room(floor_color=(0.20,0.05,0.20), wall_color=(0.28,0.08,0.28), ceil_color=(0.15,0.04,0.18))
         self._place_player(pos=(0,0,10))
         self.floor_state.stair_locked  = False
@@ -1029,17 +1075,7 @@ class Game:
 
     def _start_story(self):
         self._show_story([
-            "src/assets/images/history.jpeg",
-        ], callback=self._story_done)
-
-    def _start_story_part2(self):
-        self._show_story([
-            "Subaru enfrentou diversos puzzles e inimigos da escuridão",
-            "que tentaram impedir seu avanço...", "",
-            "Agora, no fim da torre, há aquele por trás de tudo: Marluxia.",
-            "Que fez tudo isso para atrair Subaru até aqui...",
-            "...querendo obter o seu Retorno pela Morte.", "",
-            "— Pressione ENTER para continuar —",
+            "src/assets/images/prologue_letter.png",
         ], callback=self._story_done)
 
     def _show_story(self, lines, callback=None):
@@ -1050,6 +1086,34 @@ class Game:
         self.story_callback = callback
         self.game_mode      = "story"
         self.input.capture_mouse(False)
+
+    def _open_book(self):
+        self.book_open = True
+        self.book_dir = self.floor_state.report_dir
+        self.book_index = self.floor_state.report_index
+        self.book_max = self.floor_state.report_max
+        self.game_mode = "book"
+        self.input.capture_mouse(False)
+
+    def _close_book(self):
+        self.book_open = False
+        self.floor_state.report_index = self.book_index
+        self.game_mode = "explore"
+        self.input.capture_mouse(True)
+
+    def _book_page_texture(self, index: int):
+        path = os.path.join(
+            self.book_dir,
+            f"marluxia_report{index}.png"
+        )
+
+        if path not in self._book_tex_cache:
+
+            try:
+                self._book_tex_cache[path] = Texture(path)
+            except Exception:
+                self._book_tex_cache[path] = None
+        return self._book_tex_cache[path]
 
     def _story_done(self):
         self.story_active = False
@@ -1500,7 +1564,6 @@ class Game:
 
         self.game_mode = "rhythm"
         self.input.capture_mouse(False)
-        self.hud.add_popup("Pressione ← ↓ ↑ → no tempo certo!", 2.5, (100,255,200))
 
     def _rhythm_abort(self):
         """Cancela o minigame (ESC) sem completar — volta pro explore."""
@@ -1666,6 +1729,25 @@ class Game:
         if self.input.key_pressed("f1"):
             self.wireframe = not self.wireframe
 
+        if self.game_mode == "book":
+            # ← / A : página anterior
+            if self.input.key_pressed("left") or self.input.key_pressed("a"):
+                 if self.book_index > 1:
+                     self.book_index -= 1
+            # → / D : próxima página
+            if self.input.key_pressed("right") or self.input.key_pressed("d"):
+                if self.book_index < self.book_max:
+                    self.book_index += 1
+            # ESC / E / Enter : fechar
+            if (
+                self.input.key_pressed("escape")
+                or self.input.key_pressed("e")
+                or self.input.key_pressed("return")
+            ):
+                self._close_book()
+            
+            return
+            
         if self.game_mode == "story":
             if self.input.key_pressed("return") or self.input.key_pressed("space"):
                 self.story_idx += 1
@@ -1796,8 +1878,29 @@ class Game:
                 self._advance_floor()
 
         elif self.current_floor == self.FLOOR_REST:
+        
+            # Fechar livro
+            if self.book_open:
+                self._close_book()
+                return
+            
+            # Avançar de andar
+            pz = self.player.world_pos[2]
+            px = self.player.world_pos[0]
             if pz < -11.0 and abs(px) < 3.0:
                 self._advance_floor()
+                return
+            
+            # Abrir livro
+            book_pos = getattr(self.floor_state, 'rest_book_pos', None)
+            radius = getattr(self.floor_state, 'rest_book_radius', 1.5)
+
+            if book_pos is not None:
+                dx = self.player.world_pos[0] - book_pos[0]
+                dz = self.player.world_pos[2] - book_pos[2]
+                dist = (dx * dx + dz * dz) ** 0.5
+                if dist <= radius:
+                    self._open_book()
 
     # ── Spells / Items ────────────────────────────────────────────────────────
 
@@ -1882,6 +1985,9 @@ class Game:
             if self.game_mode == "fade": return
         if self.game_mode == "rhythm":
             self._update_rhythm(dt)
+        if self.game_mode == "story":
+            self.story_timer += dt
+            return
         if self.game_mode not in ("explore","rhythm"): return
         self._update_player(dt)
         if self.player_anim is not None:
@@ -2585,13 +2691,110 @@ class Game:
             if self.story_idx < len(self.story_lines):
                 line  = self.story_lines[self.story_idx]
                 if is_image_path(line):
-                    h.draw_image(texture=Texture(line), x=0, y=0, w=sw, h=sh)
+                    if not hasattr(self, "_story_tex_cache"):
+                        self._story_tex_cache = {}
+                    if line not in self._story_tex_cache:
+                        self._story_tex_cache[line] = Texture(line)
+                    tex = self._story_tex_cache[line]
+                    FADE_DURATION = 4.0
+                    alpha = min(1.0, self.story_timer / FADE_DURATION)
+                    h.draw_image(texture=tex, x=0, y=0, w=sw, h=sh, alpha=alpha)
                 else:
                     color = (255,255,255) if line else (100,100,100)
                     h.draw_text(line, sw//2, sh//2, 22, color, center=True)
             h.draw_text("[ENTER] próximo", sw//2, sh-40, 14, (150,150,150), center=True)
             return
+    
+        if self.game_mode == "book":
+            # Fundo escuro
+            h.draw_rect(
+                0,
+                0,
+                sw,
+                sh,
+                (0.0, 0.0, 0.04)
+            )
 
+            tex = self._book_page_texture(self.book_index)
+
+            if tex is not None:
+                # Mantém proporção da imagem
+                img_w = (
+                    int(sh * (tex.width / tex.height))
+                    if hasattr(tex, 'width')
+                    else sw
+                )
+
+                img_h = sh
+
+                if img_w > sw:
+
+                    img_w = sw
+
+                    img_h = (
+                        int(sw * (tex.height / tex.width))
+                        if hasattr(tex, 'width')
+                        else sh
+                    )
+
+
+                img_x = (sw - img_w) // 2
+                img_y = (sh - img_h) // 2
+
+
+                h.draw_image(
+                    texture=tex,
+                    x=img_x,
+                    y=img_y,
+                    w=img_w,
+                    h=img_h,
+                    alpha=1.0
+                )
+
+
+            else:
+
+                h.draw_text(
+                    f"[Relatório {self.book_index} não encontrado]",
+                    sw // 2,
+                    sh // 2,
+                    20,
+                    (200,100,100),
+                    center=True
+                )
+
+            # Navegação
+
+            if self.book_index > 1:
+
+                h.draw_text(
+                    "← Anterior",
+                    60,
+                    sh - 40,
+                    15,
+                    (200,200,200)
+                )
+
+            if self.book_index < self.book_max:
+
+                h.draw_text(
+                    "Próximo →",
+                    sw - 110,
+                    sh - 40,
+                    15,
+                    (200,200,200)
+                )
+
+            h.draw_text(
+                "[ESC / E] Fechar",
+                sw // 2,
+                sh - 6,
+                12,
+                (130,130,130),
+                center=True
+            )
+            return
+            
         if self.game_mode == "credits":
             h.draw_rect(0, 0, sw, sh, (0.0, 0.0, 0.0))
             credits = [

@@ -78,18 +78,18 @@ class HUD:
         self.item_menu_open  = False
         self.skill_menu_open = False
         self.inventory_items = []
-        self.popups: list = []   # [text, timer, color]
+        self.popups: list = []   # [text, timer, color, y_offset]
 
     def resize(self, w, h):
         self.sw = w
         self.sh = h
         self.proj = ortho(0, w, h, 0, -1, 1)
 
-    def add_popup(self, text: str, duration: float = 2.0, color=(255, 220, 100)):
-        self.popups.append([text, duration, color])
+    def add_popup(self, text: str, duration: float = 2.0, color=(255, 220, 100), y_offset: int = 0):
+        self.popups.append([text, duration, color, y_offset])
 
     def update(self, dt: float):
-        self.popups = [[t, ti - dt, c] for t, ti, c in self.popups if ti - dt > 0]
+        self.popups = [[t, ti - dt, c, yo] for t, ti, c, yo in self.popups if ti - dt > 0]
 
     # ── Shader setup ─────────────────────────────────────────────────────────
 
@@ -334,11 +334,11 @@ class HUD:
             self._draw_skill_submenu()
 
         # Popups centralizados, com fade de opacidade e sombra para destaque
-        for i, (text, timer, color) in enumerate(reversed(self.popups)):
+        for i, (text, timer, color, y_offset) in enumerate(reversed(self.popups)):
             fade = min(1.0, timer)
             self.draw_text(
                 text,
-                sw // 2, sh // 2 - 80 - i * 28,
+                sw // 2, sh // 2 - 80 - i * 28 + y_offset,
                 size=19, color=color, bold=True,
                 center=True, alpha=fade, shadow=True,
             )
