@@ -2862,17 +2862,76 @@ class Game:
                             lane_w - 14, note_h - 6,
                             (1.0, 0.97, 0.70), alpha=0.70)
     def _draw_menu_background(self, hud):
+        """
+        Tela de título: céu noturno em gradiente contínuo, campo de estrelas com
+        profundidade, lua/orbe arcano, silhueta de torre ao fundo e título em
+        estandarte dourado — clima de fantasia medieval / Re:Zero.
+        """
         sw, sh = self.screen_w, self.screen_h
-        hud.draw_rect(0, 0, sw, sh, (0.03,0.03,0.08))
-        hud.draw_rect(0, int(sh*0.15), sw, int(sh*0.1),  (0.06,0.04,0.12))
-        hud.draw_rect(0, int(sh*0.25), sw, int(sh*0.12), (0.08,0.06,0.18))
-        hud.draw_text("Torre de Plêiades",        sw//2, int(sh*0.10),  36, (235,220,255), bold=True, center=True)
-        hud.draw_text("Re:Zero – uma nova jornada", sw//2, int(sh*0.175), 18, (200,180,220), center=True)
+
+        # ── Céu noturno (gradiente único, sem emendas visíveis) ────────────────
+        hud.draw_gradient_rect(0, 0, sw, sh, (0.02, 0.02, 0.07), (0.12, 0.08, 0.10), steps=16)
+
+        # ── Lua / orbe arcano no fundo ──────────────────────────────────────────
+        moon_cx, moon_cy, moon_r = sw * 0.84, sh * 0.16, sh * 0.055
+        hud.draw_medallion(moon_cx, moon_cy, moon_r, (0.85, 0.85, 0.95), ring_color=(0.30, 0.30, 0.50))
+        hud.draw_gem(moon_cx, moon_cy, moon_r * 0.4, (0.95, 0.95, 1.0), sides=14, highlight=False)
+
+        # ── Campo de estrelas (PRNG determinístico — mesmo céu a cada frame) ───
         rnd = 1
-        for i in range(80):
-            rnd=(rnd*1664525+1013904223)&0xFFFFFFFF; sx=(rnd>>8)%sw
-            rnd=(rnd*1664525+1013904223)&0xFFFFFFFF; sy=(rnd>>8)%int(sh*0.55)
-            hud.draw_text(".", sx, sy, 10, (220,220,255))
+        def _next():
+            nonlocal rnd
+            rnd = (rnd * 1664525 + 1013904223) & 0xFFFFFFFF
+            return rnd
+
+        for _ in range(140):
+            sx = (_next() >> 8) % sw
+            sy = (_next() >> 8) % int(sh * 0.60)
+            depth = ((_next() >> 16) % 100) / 100.0      # 0 = distante/fraca · 1 = próxima/brilhante
+            size = 1 + round(depth * 2)
+            b = 0.55 + depth * 0.45
+            col = (min(1.0, b), min(1.0, b), min(1.0, b + (0.08 if depth > 0.7 else 0.0)))
+            hud.draw_rect(sx, sy, size, size, col, alpha=0.5 + depth * 0.5)
+            if depth > 0.88:
+                # cintilação: pequena cruz de luz nas estrelas mais brilhantes
+                hud.draw_rect(sx - 2, sy, 5, 1, col, alpha=0.45)
+                hud.draw_rect(sx, sy - 2, 1, 5, col, alpha=0.45)
+
+        # ── Silhueta da torre ao fundo, à esquerda ──────────────────────────────
+        ground_y = sh * 0.66
+        tx = sw * 0.16
+        segments = [
+            (sw * 0.075, sh * 0.11),
+            (sw * 0.055, sh * 0.095),
+            (sw * 0.040, sh * 0.085),
+            (sw * 0.026, sh * 0.075),
+        ]
+        y_cur = ground_y
+        for w, h in segments:
+            y_cur -= h
+            hud.draw_rect(tx - w / 2, y_cur, w, h, (0.035, 0.03, 0.07))
+        hud.draw_gem(tx, y_cur - 6, 5, (0.55, 0.82, 1.0), sides=8)  # luz arcana no topo
+
+        # ── Estandarte do título ────────────────────────────────────────────────
+        title_w = min(560, sw * 0.62)
+        title_h = 64
+        title_y = int(sh * 0.06)
+        hud.draw_banner(
+            "TORRE DE PLÊIADES", sw / 2, title_y, w=title_w, h=title_h,
+            base_color=(0.10, 0.06, 0.20), edge_color=(0.68, 0.55, 0.22),
+            text_color=(235, 220, 255), text_size=34, notch=min(28, title_w * 0.05),
+        )
+
+        # ── Divisor decorativo com gemas nas pontas ─────────────────────────────
+        deco_y = title_y + title_h + 14
+        deco_w = title_w * 0.45
+        hud.draw_rect(sw / 2 - deco_w / 2, deco_y, deco_w, 2, (0.78, 0.64, 0.28))
+        hud.draw_gem(sw / 2 - deco_w / 2, deco_y + 1, 4, (0.78, 0.64, 0.28), sides=4)
+        hud.draw_gem(sw / 2 + deco_w / 2, deco_y + 1, 4, (0.78, 0.64, 0.28), sides=4)
+
+        # ── Subtítulo ────────────────────────────────────────────────────────────
+        hud.draw_text("Re:Zero – uma nova jornada", sw // 2, deco_y + 22, 18,
+                    (210, 195, 230), center=True, shadow=True)
 
     def on_resize(self, w, h):
         self.screen_w = w; self.screen_h = h
