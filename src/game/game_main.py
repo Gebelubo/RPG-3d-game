@@ -25,6 +25,7 @@ from OpenGL.GL import (
 )
 import numpy as np
 sys.path.insert(0, _HERE)
+from src.utils.image_utils import is_image_path
 
 from src.engine.shader        import ShaderProgram
 from src.engine.mesh          import ProceduralMesh, make_cube, make_plane, make_sphere
@@ -1028,11 +1029,7 @@ class Game:
 
     def _start_story(self):
         self._show_story([
-            "Enquanto Emilia tentava recuperar suas memórias perdidas...",
-            "...dentro da própria mente, Natsuki Subaru",
-            "começou a avançar na torre em que ela foi capturada.",
-            "", "Mas Subaru não vai desistir de Emilia.", "",
-            "— Pressione ENTER para começar —",
+            "src/assets/images/history.jpeg",
         ], callback=self._story_done)
 
     def _start_story_part2(self):
@@ -2587,8 +2584,11 @@ class Game:
             h.draw_rect(0, 0, sw, sh, (0.0, 0.0, 0.05))
             if self.story_idx < len(self.story_lines):
                 line  = self.story_lines[self.story_idx]
-                color = (255,255,255) if line else (100,100,100)
-                h.draw_text(line, sw//2, sh//2, 22, color, center=True)
+                if is_image_path(line):
+                    h.draw_image(texture=Texture(line), x=0, y=0, w=sw, h=sh)
+                else:
+                    color = (255,255,255) if line else (100,100,100)
+                    h.draw_text(line, sw//2, sh//2, 22, color, center=True)
             h.draw_text("[ENTER] próximo", sw//2, sh-40, 14, (150,150,150), center=True)
             return
 

@@ -6,7 +6,7 @@ from OpenGL.GL import (
     glActiveTexture, glEnable, glDisable, glBlendFunc,
     GL_UNSIGNED_INT, GL_TRIANGLES,
     GL_TEXTURE_2D,
-    GL_BLEND, GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA, GL_TEXTURE0,
+    GL_BLEND, GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA, GL_TEXTURE0, glUseProgram, glDrawArrays
 )
 from src.engine.math3d import ortho, identity
 
@@ -544,3 +544,37 @@ class HUD:
     def cleanup(self):
         """Libera todas as texturas em cache. Chamar ao fechar o jogo."""
         clear_text_cache()
+
+    def draw_image(self, texture,
+                x: int, y: int,
+                w: int, h: int,
+                alpha: float = 1.0):
+
+
+        glEnable(GL_BLEND)
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
+
+        self._setup(alpha)
+
+        self.shader.set_bool("uUseTexture", True)
+        self.shader.set_vec3("uBaseColor", (1.0, 1.0, 1.0))
+
+        glActiveTexture(GL_TEXTURE0)
+        glBindTexture(GL_TEXTURE_2D, texture.id)
+
+        vao, vbo, ibo = _make_quad(x, y, w, h)
+
+        glBindVertexArray(vao)
+        glDrawElements(
+            GL_TRIANGLES,
+            6,
+            GL_UNSIGNED_INT,
+            None
+        )
+
+        glBindVertexArray(0)
+        glBindTexture(GL_TEXTURE_2D, 0)
+
+        glDisable(GL_BLEND)
+
+        _free_quad(vao, vbo, ibo)
