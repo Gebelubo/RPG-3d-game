@@ -11,7 +11,7 @@ from src.config.constants import (STAIR_WIDTH,
                                   ROOM_D,
                                   ROOM_H,
                                   ROOM_W,
-                                  MARLUXIA_Y_OFFSET)
+                                  MARLUXIA_Y_OFFSET, EMILIA_PHASE_OFFSETS)
 
 
 import os, sys, math, random, json
@@ -151,6 +151,9 @@ class Game:
         self.book_dir = ""
         self._book_tex_cache: dict = {}
         self.credits_active      = False
+        # ── Estado pós-boss: cutscene da Emilia ──────────────────────────────
+        self.emilia_cutscene_phase = None   # None | "sleeping" | "waking" | "idle"
+        self.emilia_stone_node     = None   # pedra/sarcófago no chão
         self.credits_timer       = 0.0
         self.credits_y           = 0.0
         self._fade_alpha         = 0.0
@@ -194,6 +197,8 @@ class Game:
         self.player_node    = None
         self.beatrice_anim  = None
         self.emilia_anim    = None
+        self.emilia_cutscene_phase = None
+        self.emilia_stone_node     = None
         self.marluxia_anim  = None
         self.scene          = Scene()
         self.scene.set_aspect(self.screen_w / self.screen_h)
@@ -997,18 +1002,50 @@ class Game:
         self.scene.light.color         = np.array([1.0,0.5,1.0], dtype=np.float32)
         self.scene.light.intensity     = 1.5
 
-        # Emilia inconsciente ao fundo — tenta skinned mesh primeiro
-        em_pos = (3.5, EMILIA_Y_OFFSET, -10)   # afastada do pilar central, mais perto do centro
+        # ── Pedra/sarcófago onde a Emilia está deitada ───────────────────────
+        # Uma laje plana no chão que serve de "cama" para a animação sleeping.
+        # Tem física (BoxHitbox) para o player poder subir nela se quiser.
+        stone_w, stone_h, stone_d = 1.8, 0.25, 3.2
+        em_stone_pos = (3.5, stone_h / 2, -10.0)
+        stone_mesh = self._helper.make_box_mesh(
+            "emilia_stone", stone_w, stone_h, stone_d,
+            color=(0.45, 0.40, 0.55), ka=0.25, kd=0.65, ks=0.15, shin=12
+        )
+        try:
+            stone_tex = Texture(os.path.join(_HERE, "assets", "models", "tower", "stone_bricks.jpg"))
+        except Exception:
+            stone_tex = None
+        stone_node = SceneNode(
+            "emilia_stone", mesh=stone_mesh,
+            position=list(em_stone_pos), texture=stone_tex
+        )
+        self.scene.add(stone_node)
+        self.emilia_stone_node = stone_node
+        self.floor_state.obstacles.append(
+            BoxHitbox(
+                x=em_stone_pos[0], y=em_stone_pos[1], z=em_stone_pos[2],
+                width=stone_w, height=stone_h, depth=stone_d
+            )
+        )
+
+        # ── Emilia deitada em cima da pedra (animação sleeping) ──────────────
+        # Y = topo da pedra + offset do modelo
+        self._emilia_base_pos = (3.5, stone_h + EMILIA_Y_OFFSET, -10.0)
+        em_pos = self._emilia_base_pos
         em_node, em_skinned, em_anim = self._helper.load_skinned_emilia(
-            position=em_pos, rotation=(0, 0, 0)  # deitada no chão (90° no eixo X)
+            position=em_pos, rotation=(0, 0, 0)
         )
         if em_node is not None:
-            # Skinned: NÃO entra em scene.add() — renderizado por _render_skinned_emilia()
             self.emilia_skinned_mesh = em_skinned
             self.emilia_anim         = em_anim
+            if self.emilia_anim is not None:
+                self.emilia_anim.play("sleeping", restart_if_same=True)
+            self.emilia_cutscene_phase = "sleeping"
+            self._apply_emilia_phase_offset("sleeping", em_node=em_node)
         else:
             self.emilia_skinned_mesh = None
             self.emilia_anim         = None
+            self.emilia_cutscene_phase = None
             em_node = self._helper._load_obj_model(
                 os.path.join(_HERE, "assets", "models", "Emilia", "emilia.obj"),
                 position=em_pos, rotation=(0, 0, 0), scale=(1.0, 1.0, 1.0)
@@ -1121,13 +1158,48 @@ class Game:
         self.input.capture_mouse(True)
 
     def _show_ending(self):
+        # Mantido por compatibilidade; a cutscene real é orquestrada por
+        # _on_boss_defeated usando callbacks encadeados.
+        self._on_boss_defeated()
+
+    def _apply_emilia_phase_offset(self, phase: str, em_node=None):
+        """Aplica o offset de posição da fase atual da cutscene da Emilia,
+        sempre a partir da posição base (nunca soma incrementalmente —
+        evita acúmulo de erro se a fase for reaplicada)."""
+
+        if em_node is None:
+            em_node = getattr(self.floor_state, 'emilia_node', None)
+        base = getattr(self, '_emilia_base_pos', None)
+        if em_node is None or base is None:
+            return
+        off = EMILIA_PHASE_OFFSETS.get(phase, (0.0, 0.0, 0.0))
+        em_node.position[0] = base[0] + off[0]
+        em_node.position[1] = base[1] + off[1]
+        em_node.position[2] = base[2] + off[2]
+
+    def _show_ending_part2(self, callback):
+        """Segunda caixa de diálogo: Emilia diz 'Subaru?' e lembra."""
         self._show_story([
-            "Marluxia cai.", "", "Emilia abre os olhos devagar...", "", '"Subaru...?"', "",
-            "Suas memórias voltaram.", "Ela lembra de tudo.", "",
-            '"Eu me lembro de você, Subaru."', "",
-            "Os dois ficam juntos na sala silenciosa da torre.", "", "— FIM —", "",
+            '"Subaru...?"',
+            "",
+            "A voz dela é suave, confusa — mas real.",
+            "",
+            "Suas memórias estão voltando.",
+            "",
+            "Ela lembra de tudo.",
+        ], callback=callback)
+
+    def _show_ending_part3(self, callback):
+        """Terceira caixa de diálogo: 'Eu me lembro de tudo'."""
+        self._show_story([
+            '"Eu me lembro de você, Subaru."',
+            "",
+            "Os dois ficam juntos na sala silenciosa da torre.",
+            "",
+            "— FIM —",
+            "",
             "— Pressione ENTER para os créditos —",
-        ], callback=self._start_credits)
+        ], callback=callback)
 
     def _start_credits(self):
         self.credits_active = True
@@ -1302,7 +1374,65 @@ class Game:
         pygame.mixer.music.stop()
         pygame.mixer.music.load(os.path.join(_HERE, "assets", "music", "credits.mp3"))
         pygame.mixer.music.play()
-        self.game_mode = "story"; self.input.capture_mouse(False); self._show_ending()
+
+        # ── Sequência da cutscene da Emilia ──────────────────────────────────
+        #
+        # Fase 1 (imediata): tela preta + texto "Marluxia cai..."
+        #   → volta ao jogo: Emilia em waking
+        # Fase 2: tela preta + texto "Subaru?" / memórias
+        #   → volta ao jogo: Emilia em idle
+        # Fase 3: tela preta + "eu me lembro de tudo" / créditos
+        #
+        # Cada fase é encadeada via callbacks da _show_story.
+
+        def _after_story_1():
+            # Troca a animação da Emilia para waking
+            if self.emilia_anim is not None:
+                self.emilia_anim.play("waking", restart_if_same=True)
+            self.emilia_cutscene_phase = "waking"
+            self._apply_emilia_phase_offset("waking") 
+            # Volta ao explore brevemente para o jogador ver a animação
+            self.game_mode = "explore"
+            self.input.capture_mouse(True)
+            # Depois de WAKING_DURATION segundos inicia a 2ª história
+            self._emilia_waking_timer = 0.0
+            self._emilia_waking_pending = True
+
+        def _after_story_2():
+            if self.emilia_anim is not None:
+                self.emilia_anim.play("idle", restart_if_same=True)
+            self.emilia_cutscene_phase = "idle"
+            self._apply_emilia_phase_offset("idle") 
+            self.game_mode = "explore"
+            self.input.capture_mouse(True)
+            # Depois de IDLE_SHOW_DURATION segundos inicia a 3ª história
+            self._emilia_idle_timer = 0.0
+            self._emilia_idle_pending = True
+
+        def _after_story_3():
+            self._start_credits()
+
+        # Timers de espera (segundos que o jogador vê a animação antes da
+        # próxima caixa de texto aparecer automaticamente).
+        self._emilia_waking_duration = 3.5   # tempo assistindo a waking
+        self._emilia_idle_duration   = 2.5   # tempo assistindo a idle
+        self._emilia_waking_timer    = 0.0
+        self._emilia_idle_timer      = 0.0
+        self._emilia_waking_pending  = False
+        self._emilia_idle_pending    = False
+
+        # Guarda referências para uso nos timers do _update_game
+        self._emilia_after_story_2 = _after_story_2
+        self._emilia_after_story_3 = _after_story_3
+
+        # ── Fase 1: história imediata (Marluxia cai, Emilia abre os olhos) ──
+        self._show_story([
+            "Marluxia cai.",
+            "",
+            "O silêncio toma a sala da torre.",
+            "",
+            "Emilia... ela começa a se mexer.",
+        ], callback=_after_story_1)
 
     # ── Player attack (real-time) ─────────────────────────────────────────────
 
@@ -1974,6 +2104,26 @@ class Game:
 
     # ── Update ────────────────────────────────────────────────────────────────
 
+    def _update_emilia_cutscene_timers(self, dt: float):
+        """Avança os timers que controlam as pausas visuais entre as fases
+        da cutscene da Emilia (waking → idle) e dispara as histórias seguintes
+        automaticamente."""
+        if getattr(self, '_emilia_waking_pending', False):
+            self._emilia_waking_timer += dt
+            if self._emilia_waking_timer >= getattr(self, '_emilia_waking_duration', 3.5):
+                self._emilia_waking_pending = False
+                cb2 = getattr(self, '_emilia_after_story_2', None)
+                if cb2:
+                    self._show_ending_part2(cb2)
+
+        if getattr(self, '_emilia_idle_pending', False):
+            self._emilia_idle_timer += dt
+            if self._emilia_idle_timer >= getattr(self, '_emilia_idle_duration', 2.5):
+                self._emilia_idle_pending = False
+                cb3 = getattr(self, '_emilia_after_story_3', None)
+                if cb3:
+                    self._show_ending_part3(cb3)
+
     def _update_game(self, dt):
         if self.game_mode == "death":
             self.death_timer -= dt
@@ -2012,7 +2162,13 @@ class Game:
         emilia_anim = getattr(self, 'emilia_anim', None)
         emilia_node = getattr(self.floor_state, 'emilia_node', None)
         if emilia_anim is not None and emilia_node is not None and getattr(emilia_node, 'visible', True):
-            emilia_anim.update(dt)
+                was_waking = (self.emilia_cutscene_phase == "waking")
+                emilia_anim.update(dt)
+                if was_waking and emilia_anim.state != "waking":
+                    self._apply_emilia_phase_offset("idle", em_node=emilia_node)
+                    self.emilia_cutscene_phase = "idle_pending"
+        # Timers da cutscene da Emilia (waking/idle após morte do boss)
+        self._update_emilia_cutscene_timers(dt)
 
     def _update_fade(self, dt):
         half = self._fade_duration

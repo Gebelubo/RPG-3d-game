@@ -39,6 +39,13 @@ AERIALKNOCKER_CLIP_NAMES = {"idle": "Swim_Idle_Loop", "walking": "Swim_Idle_Loop
 # Emilia animada – mesmo pipeline do Subaru (sem NGC, defaults neutros)
 EMILIA_TARGET_HEIGHT    = 1.7
 EMILIA_Y_OFFSET         = 0.0  # deitada no chão: Y sobe para ficar sobre a superfície
+# Offsets de posição por fase da cutscene pós-boss (em metros, relativos à
+# posição base em_pos). Ajuste estes valores visualmente conforme necessário.
+EMILIA_PHASE_OFFSETS = {
+    "sleeping": (0.0, -1.0, 0.0),   # desce um pouco
+    "waking":   (0.8, 0.0, 0.0),    # vai um pouco para a esquerda
+    "idle":     (0.0, 0.0, 0.0),     # posição original, já está correta
+}
 EMILIA_CLIP_NAMES       = {"idle": "mixamo.com"}  # nome real do clipe no GLB
 EMILIA_MANUAL_SCALE     = 0.75  # escala manual: GLB tem scale:100 nos nodes, auto_scale falha
 

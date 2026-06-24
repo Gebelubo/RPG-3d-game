@@ -26,6 +26,16 @@ AERIALKNOCKER_GLB_PATH  = os.path.join(_HERE, "assets", "models", "AerialKnocker
 
 EMILIA_GLB_PATH         = os.path.join(_HERE, "assets", "models", "Emilia", "emilia_idle.glb")
 
+# Emilia — cutscene pós-boss: dois clipes em arquivos .glb separados
+# (mesmo padrão do Subaru), já que cada export do Mixamo traz o clipe
+# interno sempre nomeado "mixamo.com". MultiClipCharacter renomeia pela
+# chave do dict, então o nome interno do clip não importa.
+EMILIA_GLB_FILES = {
+    "Sleeping": os.path.join(_HERE, "assets", "models", "Emilia", "emilia_sleeping.glb"),
+    "Waking":   os.path.join(_HERE, "assets", "models", "Emilia", "emilia_waking.glb"),
+    "Idle":     os.path.join(_HERE, "assets", "models", "Emilia", "emilia_idle.glb"),
+}
+
 MARLUXIA_GLB_PATH       = os.path.join(_HERE, "assets", "models", "Marluxia", "marluxia_idle.glb")
 
 SHADER_DIR = os.path.join(_HERE, "assets", "shaders")

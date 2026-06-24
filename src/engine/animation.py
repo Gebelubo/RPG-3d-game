@@ -26,12 +26,16 @@ DEFAULT_CLIP_NAMES = {
     "beatrice":            "Beatrice",            # minya / emt / shamac
     "invisibleprovidence": "InvisibleProvidence",  # invisible providence
     "item":                "Item",                 # uso de item (cura HP ou MP)
+    # Emilia — cutscene pos-boss
+    "sleeping":            "Sleeping",            # loop: deitada inconsciente
+    "waking":              "Waking",              # one-shot: acordando
 }
 
 # Estados que tocam uma vez e voltam para idle sozinhos ao terminar
 ONE_SHOT_STATES = {
     "punching", "reaction", "jumping",
     "beatrice", "invisibleprovidence", "item",
+    "waking",   # one-shot: toca uma vez e volta para idle
 }
 
 BLEND_TIME = 0.15  # segundos de crossfade ao trocar de estado

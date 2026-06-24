@@ -253,7 +253,8 @@ class MultiClipCharacter(Character):
         files,
         target_height,
         primary_clip,
-        fallback_texture=None
+        fallback_texture=None,
+        manual_scale=None
     ):
 
         super().__init__(
@@ -261,7 +262,8 @@ class MultiClipCharacter(Character):
             y_offset=y_offset,
             glb_path=None,
             target_height=target_height,
-            fallback_texture=fallback_texture
+            fallback_texture=fallback_texture,
+            manual_scale=manual_scale
         )
 
         self.files = files
