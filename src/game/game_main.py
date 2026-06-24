@@ -1182,20 +1182,37 @@ class Game:
         self._show_story([
             '"Subaru...?"',
             "",
-            "A voz dela é suave, confusa — mas real.",
+            "A voz dela surge baixa e hesitante.",
             "",
-            "Suas memórias estão voltando.",
+            "Por um instante, Emilia apenas encara aquele momento, como se tentasse entender se aquilo era real.",
             "",
-            "Ela lembra de tudo.",
+            "Mas então ela sente."
+            "",
+            "Mesmo durante todo aquele tempo, ela continuou carregando cada memória e cada sentimento em seu coração.",
+            "",
+            "As lembranças, os sentimentos e as promessas que compartilhou com Subaru ainda estavam lá.",
+            "",
+            "Ela estava de volta."
         ], callback=callback)
 
     def _show_ending_part3(self, callback):
-        """Terceira caixa de diálogo: 'Eu me lembro de tudo'."""
+        """Terceira caixa de diálogo"""
         self._show_story([
-            '"Eu me lembro de você, Subaru."',
+            '"Obrigada por me salvar, Subaru."',
             "",
-            "Os dois ficam juntos na sala silenciosa da torre.",
+            "Sob o cenário silencioso da torre, um momento de paz finalmente era compartilhado."
             "",
+            "Tudo o que aconteceu até aquele ponto... cada batalha, cada sacrifício e cada escolha...",
+            "existiram apenas para que esse momento pudesse acontecer.",
+            "",
+            "Pois esta é a história de um garoto inseguro.",
+            "",
+            "Um garoto que precisou se perder, cair e continuar seguindo em frente.",
+            "",
+            "Que suportou dores que ninguém deveria carregar, apenas para conseguir ficar ao lado da garota que amava.",
+            "",
+            "Esta é apenas a história de um garoto que se esforçava para isso",
+
             "— FIM —",
             "",
             "— Pressione ENTER para os créditos —",
@@ -1427,11 +1444,19 @@ class Game:
 
         # ── Fase 1: história imediata (Marluxia cai, Emilia abre os olhos) ──
         self._show_story([
-            "Marluxia cai.",
+            "\"Então...isso é o coração de um herói\"",
             "",
-            "O silêncio toma a sala da torre.",
+            "\"No fim... era esse poder que eu procurava...\"",
             "",
-            "Emilia... ela começa a se mexer.",
+            "Essas foram as últimas palavras de Marluxia.",
+            "",
+            "Seu corpo finalmente cede. O inimigo cai derrotado, e pela primeira vez em muito tempo, o silêncio toma conta da torre.",
+            "",
+            "Até que...",
+            "",
+            "Um pequeno movimento quebra o silêncio.",
+            "",
+            "Emilia começa lentamente a despertar de seu sono profundo."
         ], callback=_after_story_1)
 
     # ── Player attack (real-time) ─────────────────────────────────────────────
