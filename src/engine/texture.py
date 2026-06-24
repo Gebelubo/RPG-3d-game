@@ -17,15 +17,16 @@ from OpenGL.GL import (
 
 
 class Texture:
-    def __init__(self, path: str):
+    def __init__(self, path: str, max_size: int | None = 1024):
         self.id   = 0
         self.path = path
-        self._load(path)
+        self._load(path, max_size)
 
-    def _load(self, path: str):
+    def _load(self, path: str, max_size: int | None = 1024):
         try:
             img = Image.open(path)
-            img.thumbnail((1024, 1024), Image.LANCZOS)   # limita a 1024px mantendo proporção
+            if max_size is not None:
+                img.thumbnail((max_size, max_size), Image.LANCZOS)
             img = img.transpose(Image.FLIP_TOP_BOTTOM)
             fmt  = GL_RGBA if img.mode == "RGBA" else GL_RGB
             data = img.convert("RGBA" if fmt == GL_RGBA else "RGB").tobytes()
@@ -41,7 +42,6 @@ class Texture:
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT)
             glBindTexture(GL_TEXTURE_2D, 0)
         except Exception as exc:
-            # Fail gracefully: create a small procedural 4x4 checker texture
             print(f"Texture load failed for {path}: {exc}")
             size = 4
             data = []
@@ -79,7 +79,6 @@ class ProceduralTexture(Texture):
     """Generate a simple checkerboard texture without any image file."""
 
     def __init__(self, size=64, color_a=(200,200,200), color_b=(100,100,100)):
-        # bypass parent __init__
         self.path = "<procedural>"
         self.id   = 0
         self._generate(size, color_a, color_b)

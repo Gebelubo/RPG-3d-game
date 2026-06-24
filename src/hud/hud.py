@@ -6,7 +6,10 @@ from OpenGL.GL import (
     glActiveTexture, glEnable, glDisable, glBlendFunc,
     GL_UNSIGNED_INT, GL_TRIANGLES,
     GL_TEXTURE_2D,
-    GL_BLEND, GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA, GL_TEXTURE0, glUseProgram, glDrawArrays
+    GL_BLEND, GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA, GL_TEXTURE0, glUseProgram, glDrawArrays,
+    glTexParameteri, glGenerateMipmap,
+    GL_TEXTURE_MIN_FILTER, GL_TEXTURE_MAG_FILTER,
+    GL_LINEAR, GL_LINEAR_MIPMAP_LINEAR,
 )
 from src.engine.math3d import ortho, identity
 
@@ -561,6 +564,9 @@ class HUD:
 
         glActiveTexture(GL_TEXTURE0)
         glBindTexture(GL_TEXTURE_2D, texture.id)
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR)
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR)
+        glGenerateMipmap(GL_TEXTURE_2D)
 
         vao, vbo, ibo = _make_quad(x, y, w, h)
 

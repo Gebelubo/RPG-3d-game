@@ -1147,7 +1147,7 @@ class Game:
         if path not in self._book_tex_cache:
 
             try:
-                self._book_tex_cache[path] = Texture(path)
+                self._book_tex_cache[path] = Texture(path, max_size=None)
             except Exception:
                 self._book_tex_cache[path] = None
         return self._book_tex_cache[path]
@@ -2875,7 +2875,7 @@ class Game:
                     if not hasattr(self, "_story_tex_cache"):
                         self._story_tex_cache = {}
                     if line not in self._story_tex_cache:
-                        self._story_tex_cache[line] = Texture(line)
+                        self._story_tex_cache[line] = Texture(line, max_size=None)
                     tex = self._story_tex_cache[line]
                     FADE_DURATION = 4.0
                     alpha = min(1.0, self.story_timer / FADE_DURATION)
@@ -2979,11 +2979,62 @@ class Game:
         if self.game_mode == "credits":
             h.draw_rect(0, 0, sw, sh, (0.0, 0.0, 0.0))
             credits = [
-                "Torre de Plêiades", "Re:Zero – Uma nova jornada", "",
-                "Design & Desenvolvimento", "Vesuvio", "Gabriel Luiz", "",
-                "Baseado em Re:Zero kara Hajimeru Isekai Seikatsu", "por Tappei Nagatsuki", "",
-                "Kingdom Hearts – Heartless", "© Square Enix / Disney", "",
-                "Personagens: Subaru, Emilia, Marluxia", "", "Obrigado por jogar!", "", "[ENTER] Menu Principal",
+                "Torre de Plêiades",
+                "Re:Zero – Uma nova jornada",
+                "",
+                "── Desenvolvimento ──",
+                "",
+                "Vesuvio  ·  Gabriel Luiz",
+                "",
+                "── História ──",
+                "",
+                "Inspirado em",
+                "Re:Zero kara Hajimeru Isekai Seikatsu",
+                "por Tappei Nagatsuki",
+                "",
+                "e em",
+                "Kingdom Hearts: Re:Chain of Memories",
+                "© Square Enix / Disney",
+                "",
+                "── Personagens ──",
+                "",
+                "Natsuki Subaru  ·  Emilia  ·  Beatrice",
+                "Garfiel Tinsel  ·  Otto Suwen",
+                "",
+                "Marluxia  ·  Larxene  ·  Xemnas",
+                "Sora  ·  Axel  ·  Naminé",
+                "",
+                "── Assets ──",
+                "",
+                "Modelos 3D de personagens",
+                "Mixamo – Adobe Inc.",
+                "",
+                "Inimigos: Heartless",
+                "Kingdom Hearts © Square Enix / Disney",
+                "",
+                "── Trilha Sonora ──",
+                "",
+                "Hikari (Simple and Clean) Orchestral Version",
+                "Yoda",
+                "",
+                "Castle Oblivion",
+                "Kingdom Hearts Re:Chain of Memories OST",
+                "",
+                "Styx Helix (Emotional Piano Cover)",
+                "PianoPrince",
+                "",
+                "Sinister Shadows",
+                "Yoko Shimomura",
+                "",
+                "Lord of the Castle",
+                "Yoko Shimomura",
+                "",
+                "── Obrigado por jogar ──",
+                "",
+                "\"Mesmo que vocês esqueçam,",
+                "eu não vou me esquecer de nenhum de vocês.\"",
+                "",
+                "[ENTER] Menu Principal",
             ]
             base = int(self.credits_y)
             for i, line in enumerate(credits):
