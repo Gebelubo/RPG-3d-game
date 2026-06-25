@@ -309,12 +309,12 @@ class HUD:
         # Barra de HP
         self.draw_bar(bx, by + 14, 196, 16, p.hp / p.max_hp,
                       bar_color=(0.88, 0.16, 0.18), bg_color=(0.16, 0.04, 0.05))
-        self.draw_text(f"HP  {p.hp}/{p.max_hp}", bx + 6, by + 22, 12, (255, 225, 215), bold=True)
+        self.draw_text(f"HP  {p.hp}/{p.max_hp}", bx + 6, by + 15, 12, (255, 225, 215), bold=True)
 
         # Barra de MP
         self.draw_bar(bx, by + 38, 196, 16, p.mp / max(1, p.max_mp),
                       bar_color=(0.22, 0.46, 0.95), bg_color=(0.05, 0.07, 0.20))
-        self.draw_text(f"MP  {p.mp}/{p.max_mp}", bx + 6, by + 46, 12, (210, 225, 255), bold=True)
+        self.draw_text(f"MP  {p.mp}/{p.max_mp}", bx + 6, by + 39, 12, (210, 225, 255), bold=True)
 
         # Barra de XP
         self.draw_bar(bx, by + 60, 196, 10, p.xp / max(1, p.xp_next),

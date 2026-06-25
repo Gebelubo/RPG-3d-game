@@ -2861,7 +2861,7 @@ class Game:
             # Verifica se algum inimigo está em wind-up mas a janela fechou
             for e, node in self.floor_state.enemies:
                 if e.is_winding_up and not e.parry_window_open:
-                    self.hud.add_popup("Tarde demais!", 0.5, (255, 100, 100))
+                    #self.hud.add_popup("Tarde demais!", 0.5, (255, 100, 100))
                     break
             else:
                 self.hud.add_popup("Sem ataque pesado!", 0.5, (255, 100, 100))
