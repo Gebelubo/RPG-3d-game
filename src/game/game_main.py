@@ -41,7 +41,7 @@ from src.engine.math3d        import mat3_normal_matrix
 from src.hud.hud                  import HUD
 from src.menu                 import Menu, MenuItem, MenuManager
 from src.engine.sound_effects import Effects
-from src.entities.enemy import Enemy
+from src.entities.enemy import Enemy, Boss
 from src.entities.player import Player
 from src.db.spell import SPELL_DB, SPELL_LIST
 from src.db.item import ITEM_DB
@@ -1082,7 +1082,7 @@ class Game:
                     boss_node = loaded
             self.scene.add(boss_node)
 
-        boss_enemy = Enemy("Marluxia", level=8, world_pos=[0.0, 0.0, -8.0])
+        boss_enemy = Boss("Marluxia", level=8, world_pos=[0.0, 0.0, -8.0])
         boss_enemy.stats.max_hp  = 400
         boss_enemy.stats.hp      = 400
         boss_enemy.stats.atk     = 22
@@ -1270,41 +1270,6 @@ class Game:
             MenuItem("Menu Principal", title),
         ]))
         self.game_mode = "menu"; self.input.capture_mouse(False)
-
-    def _push_combat_menu(self):
-        def attack():
-            if self.combat: self.combat.player_attack(); self._check_combat_end()
-        def use_potion():
-            if self.combat: self.combat.player_use_item("health_potion_s", self.player.inventory); self._check_combat_end()
-        def flee():
-            if self.combat: self.combat.player_flee(); self._check_combat_end()
-        self.menus.push(Menu("Combate", [
-            MenuItem("Atacar", attack), MenuItem("Poção", use_potion), MenuItem("Fugir", flee),
-        ]))
-
-    # ── Combat ───────────────────────────────────────────────────────────────
-
-    def _check_combat_end(self):
-        if self.combat and self.combat.is_over():
-            result = self.combat.result
-            self.menus.pop(); self.combat = None
-            if result == "win":
-                self.hud.add_popup("Vitória!", 2.5, (255,220,80))
-                if self._combat_enemy_ref:
-                    self._combat_enemy_ref[0].dead = True
-                    self._combat_enemy_ref[1].visible = False
-                    self._combat_enemy_ref = None
-            elif result == "lose":
-                self._trigger_death(); return
-            self.game_mode = "explore"; self.input.capture_mouse(True)
-            self._check_floor_progress()
-
-    def _start_combat_with(self, enemy_tuple):
-        e, node = enemy_tuple
-        self._combat_enemy_ref = enemy_tuple
-        self.combat = self.player.start_combat(e.stats)
-        self.game_mode = "combat"; self.input.capture_mouse(False)
-        self._push_combat_menu()
 
     def _trigger_death(self):
         self.game_mode = "death"; self.death_timer = 3.5; self.input.capture_mouse(False)
@@ -2697,6 +2662,9 @@ class Game:
         for e, node in self.floor_state.enemies:
             if e.dead: continue
             e.update(self.player.world_pos, dt)
+            if isinstance(e, Boss):
+                self._update_boss(boss=e, node=node, dt=dt)
+                return 
             y_off = getattr(e, '_y_offset', 0.0)
             node.position = [e.world_pos[0], e.world_pos[1] + y_off, e.world_pos[2]]
             if not getattr(e, 'stationary', False):
@@ -2741,8 +2709,78 @@ class Game:
                     e1.world_pos[0] += dx*push; e1.world_pos[2] += dz*push
                     e2.world_pos[0] -= dx*push; e2.world_pos[2] -= dz*push
 
-    # ── Render ────────────────────────────────────────────────────────────────
+    def _update_boss(self, boss, node, dt):
+        print("UPDATE BOSS")
+        if boss.dead:
+            return
 
+        boss.update(self.player.world_pos, dt)
+
+        y_off = getattr(boss, "_y_offset", 0.0)
+
+        node.position = [
+            boss.world_pos[0],
+            boss.world_pos[1] + y_off,
+            boss.world_pos[2]
+        ]
+
+        node.rotation[1] = boss.facing_deg
+
+        anim = getattr(boss, "_anim", None)
+
+        if anim is not None:
+
+            target_state = boss.state
+
+            current_state = getattr(
+                boss,
+                "_anim_state",
+                None
+            )
+
+            if current_state != target_state:
+                boss._anim_state = target_state
+                anim.play(target_state)
+
+            anim.update(dt)
+
+        if boss.aggro and self.player.invincible <= 0.0:
+
+            dx = boss.world_pos[0] - self.player.world_pos[0]
+            dz = boss.world_pos[2] - self.player.world_pos[2]
+
+            dist = math.sqrt(dx*dx + dz*dz)
+
+            attack_range = boss.attack_range
+
+            if boss.current_attack:
+                attack_range = boss.current_attack["range"]
+
+            if dist < attack_range:
+
+                dmg = boss.try_attack(self.player.stats)
+                print("TRY ATTACK")
+                if dmg > 0:
+                    print("DAMAGE")
+                    self.sounds.hit_sfx.play()
+
+                    self.player.invincible = 0.5
+
+                    self.player.is_taking_damage = True
+
+                    self.player.reaction_timer = (
+                        self.player.REACTION_TIME
+                    )
+
+                    self.hud.add_popup(
+                        f"-{dmg} HP",
+                        1.2,
+                        (255,80,80)
+                    )
+
+                    if self.player.is_dead:
+                        self._trigger_death()
+        
     def _render(self):
         glPolygonMode(GL_FRONT_AND_BACK, GL_LINE if self.wireframe else GL_FILL)
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
