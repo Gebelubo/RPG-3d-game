@@ -1460,14 +1460,14 @@ class Game:
                     from src.entities.enemy import Boss as _Boss2
                     if isinstance(e, _Boss2) and not getattr(e, '_dying', False):
                         # Boss: inicia animação de morte, não some ainda
-                        e._dying       = True
-                        e._death_timer = 3.0
                         e.is_attacking = False
                         e.aggro        = False
+                        e._anim_state  = "death"
                         anim = getattr(e, '_anim', None)
                         if anim is not None:
                             anim.play("death")
-                            e._anim_state = "death"
+                        e._dying       = True
+                        e._death_timer = 3.0
                     else:
                         e.dead = True; node.visible = False
                         xp = e.stats.level * 20 + random.randint(5,15)
@@ -2096,14 +2096,14 @@ class Game:
         if not e.stats.is_alive():
             from src.entities.enemy import Boss as _Boss2
             if isinstance(e, _Boss2) and not getattr(e, '_dying', False):
-                e._dying       = True
-                e._death_timer = 3.0
                 e.is_attacking = False
                 e.aggro        = False
+                e._anim_state  = "death"
                 anim = getattr(e, '_anim', None)
                 if anim is not None:
                     anim.play("death")
-                    e._anim_state = "death"
+                e._dying       = True
+                e._death_timer = 3.0
             else:
                 e.dead = True; node.visible = False
                 xp = e.stats.level*20 + random.randint(5,15)
@@ -2758,6 +2758,11 @@ class Game:
             # Toca animação de morte e aguarda timer antes da cutscene
             anim = getattr(boss, '_anim', None)
             if anim is not None:
+                # Garante que a animação de morte está tocando mesmo que
+                # não tenha sido iniciada antes de _dying ser setado.
+                if getattr(boss, '_anim_state', None) != "death":
+                    boss._anim_state = "death"
+                    anim.play("death")
                 anim.update(dt)
             boss._death_timer = getattr(boss, '_death_timer', 3.0) - dt
             if boss._death_timer <= 0.0:
@@ -2904,14 +2909,24 @@ class Game:
         # IMPORTANTE: o cleanup fica FORA do bloco "> 0" para que seja
         # executado no mesmo frame em que o timer cruza zero (após o -= dt
         # acima fazer boss._enrage_timer ficar <= 0).
+        # Bug fix: removida a condição _enrage_bh_active daqui — se ela já
+        # fosse False por qualquer motivo, o cleanup nunca rodava e o boss
+        # ficava imortal para sempre. O cleanup deve disparar sempre que o
+        # timer expirar, independente do estado dos buracos negros.
         if getattr(boss, '_enrage_triggered', False) and getattr(boss, '_enrage_timer', 1.0) <= 0.0 \
-                and getattr(boss, '_enrage_bh_active', False):
+                and not getattr(boss, '_enrage_cleanup_done', False):
+            boss._enrage_cleanup_done = True
             boss._enrage_timer     = 0.0
             boss.invincible_active = False
             boss._enrage_bh_active = False
             boss.phase = 4
             if hasattr(boss, 'invincible_timer'):
                 boss.invincible_timer = 0.0
+            # Bug fix: o enrage consumiu o checkpoint de 1 HP.
+            # Sem marcar _cp_1_done=True, o _clamp_boss_damage cai no bloco
+            # default e clampeia todo dano a max(0, hp-1) = 0 indefinidamente.
+            boss._cp_1_done  = True
+            boss._cp_1_freeze = False
             # Reativa a IA do boss
             boss.aggro        = True
             boss.is_attacking = False
@@ -3079,7 +3094,14 @@ class Game:
         if timer <= 0.0:
             self._curse_active = False
             return
-        self._curse_timer  = timer - dt
+        new_timer = timer - dt
+        self._curse_timer = new_timer
+        # Bug fix: se o timer cruzou zero neste frame, desativa imediatamente
+        # em vez de esperar o próximo frame (que pode não vir se o boss morrer).
+        if new_timer <= 0.0:
+            self._curse_timer  = 0.0
+            self._curse_active = False
+            return
         self._curse_active = True
         intensity = min(1.0, self._curse_timer / 15.0) * 0.45
         self.hud.draw_rect(0, 0, self.screen_w, self.screen_h, (0.15, 0.0, 0.25), intensity)

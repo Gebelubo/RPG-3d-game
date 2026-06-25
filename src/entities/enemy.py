@@ -361,7 +361,15 @@ class MarluxiaBoss(Enemy):
         if pat.get("taunt"):
             self.stats.hp = min(self.stats.max_hp,
                                 self.stats.hp + self.TAUNT_HEAL)
-            self._finish_attack()
+            # Finaliza o taunt sem sobrescrever o attack_cooldown normal:
+            # apenas reseta o estado de ataque; o taunt_cooldown já foi
+            # setado em update() antes de entrar aqui.
+            self.is_attacking   = False
+            self.current_attack = None
+            self.state          = "idle"
+            # Garante que o boss pode atacar imediatamente após o taunt
+            # (não penaliza o attack_cooldown com os 20s do taunt).
+            # O attack_cooldown já em curso (de ataque anterior) é mantido.
             return 0
 
         # groundmagic — sem dano direto; buracos negros são tratados por game_main
