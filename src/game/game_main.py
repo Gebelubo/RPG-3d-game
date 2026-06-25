@@ -435,6 +435,7 @@ class Game:
         }
         builders[floor_idx]()
         if show_story and floor_idx == self.FLOOR_ENTRY:
+            self.sounds.subaru_myname.play()
             self._start_story()
 
     def _build_floor_entry(self):
@@ -1105,6 +1106,22 @@ class Game:
         for px in (-8.5, 8.5):
             self._helper._add_tower_deco(self.scene, self.floor_state, "platform", position=(px, 0.0, 0.0), scale=(1.0, 1.0, 1.0), collision_radius=1.2)
 
+        # ── BoxHitbox explícitas para objetos sólidos na sala do boss ─────────
+        # Pilar central (tower) ao fundo — bloqueia passagem
+        self.floor_state.obstacles.append(
+            BoxHitbox(x=0.0, y=2.0, z=-13.5, width=2.2, height=5.0, depth=2.2)
+        )
+        # Plataformas laterais (encostadas nas paredes)
+        for _px in (-8.5, 8.5):
+            self.floor_state.obstacles.append(
+                BoxHitbox(x=_px, y=0.5, z=0.0, width=2.2, height=1.2, depth=2.2)
+            )
+        # Pedra da Emilia — hitbox lateral para impedir atravessar pela lateral
+        self.floor_state.obstacles.append(
+            BoxHitbox(x=em_stone_pos[0], y=em_stone_pos[1], z=em_stone_pos[2],
+                      width=stone_w + 0.3, height=stone_h + 0.6, depth=stone_d + 0.3)
+        )
+
         self.hud.add_popup("BOSS: MARLUXIA", 3.0, (255, 80, 255))
         self.hud.add_popup("Salve Emilia!", 3.5, (255, 200, 255))
 
@@ -1272,6 +1289,7 @@ class Game:
         self.game_mode = "menu"; self.input.capture_mouse(False)
 
     def _trigger_death(self):
+        self.sounds.subaru_death.play()
         self.game_mode = "death"; self.death_timer = 3.5; self.input.capture_mouse(False)
 
     def _respawn(self):
@@ -1382,6 +1400,7 @@ class Game:
         def _after_story_2():
             if self.emilia_anim is not None:
                 self.emilia_anim.play("idle", restart_if_same=True)
+            self.sounds.emilia_thankyou.play()
             self.emilia_cutscene_phase = "idle"
             self._apply_emilia_phase_offset("idle") 
             self.game_mode = "explore"
@@ -1426,7 +1445,9 @@ class Game:
     # ── Player attack (real-time) ─────────────────────────────────────────────
 
     def _player_melee_attack(self):
-        self.sounds.attack_sfx.play()
+        self._suppress_walk_sound = True
+        self.sounds.subaru_walk.stop()
+        self.sounds.subaru_punch.play()
 
         p = self.player
         if p.attack_cd > 0: return
@@ -1453,6 +1474,8 @@ class Game:
                     else:
                         damage = self._clamp_boss_damage(e, damage)
                         actual = e.receive_hit(damage)
+                        if actual > 0:
+                            self.sounds.marluxia_hit.play()
                 else:
                     actual = e.stats.take_damage(damage)
                 self.hud.add_popup(f"-{actual} HP", 1.0, (255,200,140))
@@ -1462,14 +1485,16 @@ class Game:
                         # Boss: inicia animação de morte, não some ainda
                         e.is_attacking = False
                         e.aggro        = False
-                        e._anim_state  = "death"
-                        anim = getattr(e, '_anim', None)
-                        if anim is not None:
-                            anim.play("death")
+                        # _anim_state / anim.play("death") NÃO são setados aqui:
+                        # isso é responsabilidade de _update_boss, que também
+                        # dispara o som de morte (marluxia_death). Se setarmos
+                        # _anim_state="death" aqui, a checagem de lá nunca vê
+                        # a transição e o som nunca toca.
                         e._dying       = True
                         e._death_timer = 3.0
                     else:
                         e.dead = True; node.visible = False
+                        self.sounds.heartless_death.play()
                         xp = e.stats.level * 20 + random.randint(5,15)
                         leveled = p.stats.gain_xp(xp)
                         self.hud.add_popup(f"+{xp} XP", 1.5, (230,200,80))
@@ -2050,20 +2075,25 @@ class Game:
     def _cast_spell(self, spell_id):
         sp = SPELL_DB.get(spell_id)
         if not sp: return
+        self._suppress_walk_sound = True
+        self.sounds.subaru_walk.stop()
         if spell_id == "invisible_providence":
             if self.player.stats.hp <= 40:
                 self.hud.add_popup("Vida insuficiente!", 1.5, (255,100,100)); return
             self.player.stats.hp = max(1, self.player.stats.hp - 40)
+            self.sounds.subaru_invisible.play()
             if self.player_anim is not None:
                 self.player_anim.play("invisibleprovidence", restart_if_same=True)
         else:
             if not self.player.stats.use_mp(sp.mp_cost):
                 self.hud.add_popup("MP insuficiente!", 1.5, (100,100,255)); return
         if spell_id == "emt":
+            self.sounds.subaru_emt.play()
             self.player.stats.shield_time = 10.0; self._show_beatrice()
             if self.player_anim is not None:
                 self.player_anim.play("beatrice", restart_if_same=True)
             self.hud.add_popup("EMT ativado! Protegido por 10s", 2.0, (80,220,255)); return
+        # ── Procura alvo mais próximo (pode não existir nenhum) ──────────────
         nearest = None; nearest_dist = 999.0
         for e, node in self.floor_state.enemies:
             if e.dead: continue
@@ -2071,15 +2101,35 @@ class Game:
             dist = math.sqrt(dx*dx+dz*dz)
             if dist < 8.0 and dist < nearest_dist:
                 nearest = (e,node,dist); nearest_dist = dist
+
+        # ── Shamac: a Beatrice + voiceline sempre aparecem (o MP já foi
+        #    gasto e o jogador pediu pra usar a magia). O efeito NO INIMIGO
+        #    (blind) só se aplica se houver um alvo de fato.
+        if spell_id == "shamac":
+            self.sounds.subaru_shamac.play()
+            self._show_beatrice()
+            if self.player_anim is not None:
+                self.player_anim.play("beatrice", restart_if_same=True)
+            if nearest:
+                e, node, _ = nearest
+                e.blind_time = 10.0; e.aggro = False
+                self.hud.add_popup(f"Shamac! {e.stats.name} perdeu sua pista.", 2.2, (180,120,255))
+            else:
+                self.hud.add_popup("Shamac!", 1.5, (180,120,255))
+            return
+
         if not nearest:
+            # Minya sem alvo: mesma lógica — ainda mostra a Beatrice e toca
+            # a voiceline, só não há dano pra aplicar (não tem em quem).
+            if spell_id == "minya":
+                self.sounds.subaru_minya.play()
+                self._show_beatrice()
+                if self.player_anim is not None:
+                    self.player_anim.play("beatrice", restart_if_same=True)
+                self.hud.add_popup(f"{sp.name}!", 1.5, (180,120,255))
             #self.hud.add_popup(f"{sp.name} – sem alvo próximo", 1.2, (140,140,255))
             return
         e, node, _ = nearest
-        if spell_id == "shamac":
-            e.blind_time = 10.0; e.aggro = False; self._show_beatrice()
-            if self.player_anim is not None:
-                self.player_anim.play("beatrice", restart_if_same=True)
-            self.hud.add_popup(f"Shamac! {e.stats.name} perdeu sua pista.", 2.2, (180,120,255)); return
         from src.entities.enemy import Boss as _Boss
         _is_boss = isinstance(e, _Boss)
         if _is_boss:
@@ -2088,9 +2138,12 @@ class Game:
             else:
                 _spell_dmg = self._clamp_boss_damage(e, sp.damage)
             dmg = e.receive_hit(_spell_dmg) if _spell_dmg > 0 else 0
+            if dmg > 0:
+                self.sounds.marluxia_hit.play()
         else:
             dmg = e.stats.take_damage(sp.damage)
         if spell_id == "minya":
+            self.sounds.subaru_minya.play()
             self._show_beatrice()
             if self.player_anim is not None:
                 self.player_anim.play("beatrice", restart_if_same=True)
@@ -2100,14 +2153,12 @@ class Game:
             if isinstance(e, _Boss2) and not getattr(e, '_dying', False):
                 e.is_attacking = False
                 e.aggro        = False
-                e._anim_state  = "death"
-                anim = getattr(e, '_anim', None)
-                if anim is not None:
-                    anim.play("death")
+                # idem ao melee: deixa _update_boss disparar anim + som de morte
                 e._dying       = True
                 e._death_timer = 3.0
             else:
                 e.dead = True; node.visible = False
+                self.sounds.heartless_death.play()
                 xp = e.stats.level*20 + random.randint(5,15)
                 leveled = self.player.stats.gain_xp(xp)
                 self.hud.add_popup(f"+{xp} XP", 2.0, (230,200,80))
@@ -2347,13 +2398,16 @@ class Game:
             else:
                 self.player_anim.play("walking" if mag > 0 else "idle")
 
-        if moving and p.on_ground:
+        self._player_moving = moving
 
-            if not self.sounds.walk_sfx.is_playing():
-                self.sounds.walk_sfx.play(loops=-1)
+        if moving and p.on_ground and not getattr(self, '_suppress_walk_sound', False):
+
+            if not self.sounds.subaru_walk.is_playing():
+                self.sounds.subaru_walk.play(loops=-1)
 
         else:
-            self.sounds.walk_sfx.stop()
+            self.sounds.subaru_walk.stop()
+        self._suppress_walk_sound = False
 
     def _move_player_horizontal(self, dt):
 
@@ -2718,8 +2772,7 @@ class Game:
                 if e.attempt_parry():
                     parried_any = True
                     self.hud.add_popup("PARRY!", 0.8, (0, 255, 255))
-                    if hasattr(self.sounds, 'parry_success'):
-                        self.sounds.parry_success.play()
+                    self.sounds.subaru_parry.play()
                     self.player.attack_cd = 0.0
                     break
         
@@ -2732,8 +2785,7 @@ class Game:
                     boss.parry_window_open = False
                     parried_any = True
                     self.hud.add_popup("PARRY!", 1.0, (0, 255, 200))
-                    if hasattr(self.sounds, 'parry_success'):
-                        self.sounds.parry_success.play()
+                    self.sounds.subaru_parry.play()
                     self.player.attack_cd = 0.0
         
         if not parried_any:
@@ -2828,8 +2880,7 @@ class Game:
                     if was_parried:
                         # ✨ PARRY BEM SUCEDIDO! ✨
                         self.hud.add_popup("PARRY PERFEITO!", 1.5, (0, 255, 200))
-                        if hasattr(self.sounds, 'parry_success'):
-                            self.sounds.parry_success.play()
+                        self.sounds.subaru_parry.play()
                         
                         # Efeito visual do parry
                         if hasattr(node, 'mesh') and hasattr(node.mesh, 'base_color'):
@@ -2842,7 +2893,8 @@ class Game:
                         
                     elif dmg > 0:
                         # Tomou dano do ataque pesado
-                        self.sounds.hit_sfx.play()
+                        self.sounds.heartless_attack.play()
+                        self.sounds.subaru_hit.play()
                         self.player.invincible = 0.8
                         self.player.is_taking_damage = True
                         self.player.reaction_timer = self.player.REACTION_TIME
@@ -2888,7 +2940,8 @@ class Game:
                         dmg = e.try_attack(self.player.stats, player_pos, "light")
                         
                         if dmg > 0:
-                            self.sounds.hit_sfx.play()
+                            self.sounds.heartless_attack.play()
+                            self.sounds.subaru_hit.play()
                             self.player.stats.hp = max(0, self.player.stats.hp - dmg)
                             self.player.invincible = 0.3
                             self.player.is_taking_damage = True
@@ -2942,6 +2995,7 @@ class Game:
                 if getattr(boss, '_anim_state', None) != "death":
                     boss._anim_state = "death"
                     anim.play("death")
+                    self.sounds.marluxia_death.play()
                 anim.update(dt)
             boss._death_timer = getattr(boss, '_death_timer', 3.0) - dt
             if boss._death_timer <= 0.0:
@@ -2957,6 +3011,13 @@ class Game:
             return
 
         boss.update(self.player.world_pos, dt)
+
+        # ── Limite da sala: o boss nunca deve atravessar as paredes,
+        # independente da fase ou do estado (flee, attack, etc.) ──
+        _bound_hw = ROOM_W / 2 - 1.2
+        _bound_hd = ROOM_D / 2 - 1.2
+        boss.world_pos[0] = max(-_bound_hw, min(_bound_hw, boss.world_pos[0]))
+        boss.world_pos[2] = max(-_bound_hd, min(_bound_hd, boss.world_pos[2]))
 
         # ── Fase 3+: flee — mantém distância do player ──
         _boss_phase = getattr(boss, 'phase', 1)
@@ -2995,6 +3056,16 @@ class Game:
             if current_state != target_state:
                 boss._anim_state = target_state
                 anim.play(target_state)
+                # ── SFX por estado do boss ──
+                _boss_sfx = {
+                    "normalattack": self.sounds.marluxia_normal_attack,
+                    "heavyattack":  self.sounds.marluxia_heavy_attack,
+                    "roundattack":  self.sounds.marluxia_round_attack,
+                    "shoot":        self.sounds.marluxia_shoot,
+                    "taunt":        self.sounds.marluxia_taunt,
+                }
+                if target_state in _boss_sfx:
+                    _boss_sfx[target_state].play()
             anim.update(dt)
 
         # ── SISTEMA DE WIND-UP DO BOSS (PARRY) ──
@@ -3041,8 +3112,7 @@ class Game:
                 if was_parried:
                     # ✨ PARRY BEM SUCEDIDO! ✨
                     self.hud.add_popup("PARRY PERFEITO!", 1.5, (0, 255, 200))
-                    if hasattr(self.sounds, 'parry_success'):
-                        self.sounds.parry_success.play()
+                    self.sounds.subaru_parry.play()
                     
                     # Efeito visual do parry
                     if hasattr(node, 'mesh') and hasattr(node.mesh, 'base_color'):
@@ -3065,7 +3135,7 @@ class Game:
                     boss._pending_damage = 0
                     
                     if dmg > 0:
-                        self.sounds.hit_sfx.play()
+                        self.sounds.subaru_hit.play()
                         self.player.invincible = 0.8
                         self.player.is_taking_damage = True
                         self.player.reaction_timer = self.player.REACTION_TIME
@@ -3118,6 +3188,7 @@ class Game:
         if not getattr(boss, '_phase4_triggered', False) and _cur_phase >= 4 and not boss.dead:
             boss._phase4_triggered = True
             boss._atk_speed_mult = 2.5
+            self.sounds.marluxia_fase4.play()
             self.hud.add_popup("FÚRIA!", 2.5, (255, 80, 0))
 
         # ── Fase 5: Enrage ──
@@ -3130,6 +3201,7 @@ class Game:
             boss.stats.hp = 1
             if hasattr(boss, 'invincible_timer'):
                 boss.invincible_timer = 10.0
+            self.sounds.marluxia_fase5.play()
             self.hud.add_popup("ENRAGE!", 3.0, (255, 0, 80))
 
         if getattr(boss, '_enrage_timer', 0.0) > 0.0:
@@ -3138,16 +3210,22 @@ class Game:
             if hasattr(boss, 'invincible_timer'):
                 boss.invincible_timer = max(boss.invincible_timer, boss._enrage_timer)
             
-            boss._enrage_shoot_cd = getattr(boss, '_enrage_shoot_cd', 0.0) - dt
+            if not hasattr(boss, '_enrage_shoot_cd'):
+                boss._enrage_shoot_cd = 1.5  # primeira rajada após 1.5s
+            boss._enrage_shoot_cd -= dt
             if boss._enrage_shoot_cd <= 0.0:
                 self._spawn_shoot_projectile(boss)
                 boss._enrage_shoot_cd = 2.5
+        elif getattr(boss, '_enrage_cleanup_done', False):
+            # Garante que a invencibilidade nunca volta após o enrage terminar
+            boss.invincible_active = False
 
         if getattr(boss, '_enrage_triggered', False) and getattr(boss, '_enrage_timer', 1.0) <= 0.0 \
                 and not getattr(boss, '_enrage_cleanup_done', False):
             boss._enrage_cleanup_done = True
             boss._enrage_timer = 0.0
             boss.invincible_active = False
+            # (som de hit agora é tocado pelo detector genérico no fim de _update_boss)
             boss._enrage_bh_active = False
             boss.phase = 4
             if hasattr(boss, 'invincible_timer'):
@@ -3161,11 +3239,20 @@ class Game:
             for _cd_attr in ('_bh_cd', '_blackhole_cd', 'bh_cooldown', '_attack_cd', '_cd'):
                 if hasattr(boss, _cd_attr):
                     setattr(boss, _cd_attr, 0.0)
+            # Limpa todos os buracos negros ativos do enrage
+            for _bh in getattr(boss, 'blackholes', []):
+                _bh_node = _bh.get('node')
+                if _bh_node is not None:
+                    try: self.scene.remove(_bh_node)
+                    except Exception: pass
+            boss.blackholes = []
+            boss._enrage_bh_spawn_cd = 9999.0  # impede spawn imediato na fase 4
             self.hud.add_popup("FÚRIA ENCERRADA!", 2.5, (255, 160, 0))
 
         # ── Buracos negros ──
         _bh_phase = getattr(boss, 'phase', 1)
-        if _bh_phase >= 3 and not getattr(boss, '_dying', False):
+        _enrage_active = getattr(boss, '_enrage_triggered', False) and not getattr(boss, '_enrage_cleanup_done', False)
+        if _bh_phase >= 3 and not getattr(boss, '_dying', False) and not _enrage_active:
             import random as _rnd, math as _m2
             _bh_cd = {3: 1.8, 4: 1.0, 5: 0.25}.get(_bh_phase, 1.8)
             _bh_qty = {3: 1, 4: 2, 5: 3}.get(_bh_phase, 1)
@@ -3239,7 +3326,7 @@ class Game:
                         # Ataque normal sem wind-up (para ataques rápidos como roundattack)
                         dmg = boss.try_attack(self.player.stats)
                         if dmg and dmg > 0:
-                            self.sounds.hit_sfx.play()
+                            self.sounds.subaru_hit.play()
                             self.player.invincible = 0.6
                             self.player.is_taking_damage = True
                             self.player.reaction_timer = self.player.REACTION_TIME
@@ -3277,6 +3364,15 @@ class Game:
             if anim is not None:
                 anim.play("death")
                 boss._anim_state = "death"
+
+        # ── SFX de hit ao terminar QUALQUER janela de invencibilidade ──
+        # Cobre tanto a invencibilidade da fase 4 (controlada dentro da
+        # própria classe Boss) quanto a da fase 5/enrage (controlada aqui).
+        _inv_now  = getattr(boss, 'invincible_active', False)
+        _inv_prev = getattr(boss, '_prev_invincible_active', False)
+        if _inv_prev and not _inv_now:
+            self.sounds.marluxia_hit.play()
+        boss._prev_invincible_active = _inv_now
 
     def _clamp_boss_damage(self, boss, damage):
         """Clampeia dano no boss nos checkpoints de fase.
@@ -3355,6 +3451,7 @@ class Game:
             return
         self._curse_timer  = 30.0
         self._curse_active = True
+        self.sounds.marluxia_curse.play()
         self.hud.add_popup("MALDIÇÃO!", 3.0, (180, 0, 255))
 
     def _update_curse_effect(self, dt):
