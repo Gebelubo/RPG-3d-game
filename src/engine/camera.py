@@ -37,41 +37,75 @@ class Camera:
         self.right = normalize(right)
         self.up = normalize(np.cross(self.right, self.front))
 
-    def update_third_person(self, player_pos, blockers: list = None):
+    def update_third_person(self, player_pos, blockers: list = None, walls: list = None):
         target = np.array(player_pos, dtype=np.float32)
-        target[1] += 1.4  # aim at chest
+        target[1] += 1.4
         self.target_pos = target
 
-        # desired distance from target
+        # Distância máxima inicial (braço)
         max_d = self.arm_length
-
-        # approximate ground height as player's feet (chest - 1.0)
         ground_y = target[1] - 1.0
+
+        # 1. Ajuste pelo chão (se a câmera olha para baixo)
         if self.front[1] > 1e-6:
             t_ground = (target[1] - ground_y) / self.front[1]
             if 0.1 < t_ground < max_d:
                 max_d = max(0.1, t_ground - 0.05)
 
-        # compute desired position along the camera `front` vector
-        desired_pos = target - self.front * max_d
+        # 2. Limitar distância pelas paredes (planos)
+        if walls:
+            PLAYER_RADIUS = 0.45
+            for wall in walls:
+                wp = np.array(wall["pos"], dtype=np.float32)
+                normal = np.array(wall["normal"], dtype=np.float32)
+                thickness = wall.get("thickness", 0.2)
 
-        # if blockers provided, sample shorter distances to avoid intersections
+                # Interseção do raio com o plano
+                denom = np.dot(self.front, normal)
+                if abs(denom) < 1e-6:
+                    continue  # paralelo
+                # Distância do target ao plano ao longo da direção front
+                d_plane = np.dot(target - wp, normal) / denom
+                if d_plane > 0.1:
+                    # Offset para não encostar: thickness + raio do jogador, 
+                    # dividido por |denom| para converter para distância ao longo de front
+                    offset = (thickness + PLAYER_RADIUS) / abs(denom)
+                    safe_d = d_plane - offset
+                    if safe_d < max_d:
+                        max_d = max(0.1, safe_d)
+
+        # Agora max_d é a distância máxima permitida (chão + paredes)
+
+        # 3. Bloqueadores esféricos (obstáculos) – busca a maior distância segura
+        desired_distance = max_d
         if blockers:
-            safe_d = max_d
+            # Testa distâncias de 0.6 até max_d
             start = min(0.6, max_d)
-            for d in np.linspace(start, max_d, num=12):
+            safe_d = start
+            # Queremos a MAIOR distância que não colide
+            for d in np.linspace(start, max_d, num=16):
                 cand = target - self.front * d
                 collision = False
                 for b in blockers:
                     bp = np.array(b["pos"], dtype=np.float32)
                     br = float(b.get("radius", 0.6))
                     if np.linalg.norm(cand - bp) < br + 0.45:
-                        collision = True; break
+                        collision = True
+                        break
                 if not collision:
-                    safe_d = d
-            desired_pos = target - self.front * safe_d
+                    safe_d = d  # mantém a última sem colisão (a maior)
+            desired_distance = safe_d
 
-        self.pos = desired_pos
+        # Posição desejada final (já dentro dos limites)
+        desired_pos = target - self.front * desired_distance
+
+        # 4. Suavização (interpolação linear)
+        lerp_factor = 0.12
+        if hasattr(self, '_smooth_pos'):
+            self.pos = self._smooth_pos + (desired_pos - self._smooth_pos) * lerp_factor
+        else:
+            self.pos = desired_pos
+        self._smooth_pos = self.pos.copy()
 
     def process_mouse(self, dx: float, dy: float):
         self.yaw   -= dx * self.mouse_sens

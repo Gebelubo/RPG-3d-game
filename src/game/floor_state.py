@@ -27,3 +27,4 @@ class FloorState:
         # Corredor final
         self.gauntlet_waves  = []
         self.gauntlet_idx    = 0
+        self.camera_walls = []

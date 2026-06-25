@@ -437,6 +437,19 @@ class Game:
         if show_story and floor_idx == self.FLOOR_ENTRY:
             self._start_story()
 
+        self.floor_state.camera_walls = [
+        # Parede Norte (z negativo)
+        {"pos": (0, ROOM_H/2, -ROOM_D/2), "normal": (0, 0, 1), "thickness": 0.3},
+        # Parede Sul
+        {"pos": (0, ROOM_H/2, ROOM_D/2), "normal": (0, 0, -1), "thickness": 0.3},
+        # Parede Leste (x positivo)
+        {"pos": (ROOM_W/2, ROOM_H/2, 0), "normal": (-1, 0, 0), "thickness": 0.3},
+        # Parede Oeste
+        {"pos": (-ROOM_W/2, ROOM_H/2, 0), "normal": (1, 0, 0), "thickness": 0.3},
+        # Teto (plano horizontal em y = ROOM_H)
+        {"pos": (0, ROOM_H, 0), "normal": (0, -1, 0), "thickness": 0.3},
+    ]
+
     def _build_floor_entry(self):
         pygame.mixer.music.stop()
         pygame.mixer.music.load(os.path.join(_HERE, "assets", "music", "tower.mp3"))
@@ -2633,21 +2646,27 @@ class Game:
                 self.player.world_pos[2] += dz * push
 
     def _update_player_visuals(self):
-
         p = self.player
-
-        self.player_node.position = [
-            p.world_pos[0],
-            p.world_pos[1],
-            p.world_pos[2]
-        ]
-
+        self.player_node.position = [p.world_pos[0], p.world_pos[1], p.world_pos[2]]
         self.player_node.rotation[1] = p.facing_deg
 
-        self.camera.update_third_person(
-            p.world_pos
-        )
+        blockers = []
+        for obs in self.floor_state.obstacles:
+            # Verifica se é um BoxHitbox
+            if hasattr(obs, 'width') and hasattr(obs, 'height') and hasattr(obs, 'depth'):
+                radius = max(obs.width, obs.height, obs.depth) / 2
+                pos = [obs.x, obs.y, obs.z]
+            # Verifica se é um CircleHitbox (ou qualquer outro com radius)
+            elif hasattr(obs, 'radius'):
+                radius = obs.radius
+                pos = [obs.x, obs.y, obs.z]
+            else:
+                # Se não souber lidar, pula
+                continue
+            blockers.append({"pos": pos, "radius": radius})
 
+        walls = getattr(self.floor_state, 'camera_walls', [])
+        self.camera.update_third_person(p.world_pos, blockers=blockers, walls=walls)
     def _apply_room_bounds(self):
 
         p = self.player
