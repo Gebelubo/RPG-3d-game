@@ -33,8 +33,25 @@ AERIALKNOCKER_TARGET_HEIGHT = 1.4
 # Como só existe esse clipe único, mapeamos tanto "idle" quanto "walking"
 # para ele: assim o heartless/aerialknocker continuam tocando o mesmo loop
 # ao andar em vez de cair no bind pose estático por falta de clipe "Walking".
-HEARTLESS_CLIP_NAMES = {"idle": "mixamo.com", "walking": "mixamo.com"}
-AERIALKNOCKER_CLIP_NAMES = {"idle": "Swim_Idle_Loop", "walking": "Swim_Idle_Loop"}
+HEARTLESS_CLIP_NAMES = {
+    # As chaves aqui devem bater com as chaves do files dict em helper.py
+    # (MultiClipCharacter renomeia os clipes para essas chaves)
+    "idle":         "Idle",          # heartless_idle.glb
+    "walking":      "Idle",
+    "lightattack":  "NormalAttack",  # heartless_normalattack.glb
+    "normalattack": "NormalAttack",
+    "heavyattack":  "HeavyAttack",   # heartless_heavyattack.glb
+    "death":        "Death",         # heartless_death.glb
+}
+AERIALKNOCKER_CLIP_NAMES = {
+    "idle":        "Idle",           # aerialknocker_idle.glb
+    "walking":     "Idle",
+    "lightattack": "BaseAttack",     # aerialknocker_baseattack.glb
+    "baseattack":  "BaseAttack",
+    "heavyattack": "DownAttack",     # aerialknocker_downattack.glb
+    "downattack":  "DownAttack",
+    "death":       "Death",          # aerialknocker_death.glb
+}
 
 # Emilia animada – mesmo pipeline do Subaru (sem NGC, defaults neutros)
 EMILIA_TARGET_HEIGHT    = 1.7

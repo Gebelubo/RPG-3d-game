@@ -13,6 +13,7 @@ SUBARU_GLB_FILES = {
     "Beatrice":             os.path.join(SUBARU_GLB_DIR, "subaru_beatrice.glb"),
     "InvisibleProvidence":  os.path.join(SUBARU_GLB_DIR, "subaru_invisibleprovidence.glb"),
     "Item":                 os.path.join(SUBARU_GLB_DIR, "subaru_item.glb"),
+    "Parry":                os.path.join(SUBARU_GLB_DIR, "subaru_parry.glb"),
 }
 
 # Modelo completo e animado da própria Beatrice (mesh + skeleton + clipe de
@@ -22,7 +23,20 @@ SUBARU_GLB_FILES = {
 BEATRICE_GLB_PATH = os.path.join(_HERE, "assets", "models", "Beatrice", "beatrice_animation.glb")
 
 HEARTLESS_GLB_PATH  = os.path.join(_HERE, "assets", "models", "Heartless",     "heartless_idle.glb")
+HEARTLESS_GLB_DIR   = os.path.join(_HERE, "assets", "models", "Heartless")
+HEARTLESS_GLB_FILES = {
+    "NormalAttack": os.path.join(HEARTLESS_GLB_DIR, "heartless_normalattack.glb"),
+    "HeavyAttack":  os.path.join(HEARTLESS_GLB_DIR, "heartless_heavyattack.glb"),
+    "Death":        os.path.join(HEARTLESS_GLB_DIR, "heartless_death.glb"),
+}
+
 AERIALKNOCKER_GLB_PATH  = os.path.join(_HERE, "assets", "models", "AerialKnocker", "aerialknocker_idle.glb")
+AERIALKNOCKER_GLB_DIR   = os.path.join(_HERE, "assets", "models", "AerialKnocker")
+AERIALKNOCKER_GLB_FILES = {
+    "BaseAttack": os.path.join(AERIALKNOCKER_GLB_DIR, "aerialknocker_baseattack.glb"),
+    "DownAttack": os.path.join(AERIALKNOCKER_GLB_DIR, "aerialknocker_downattack.glb"),
+    "Death":      os.path.join(AERIALKNOCKER_GLB_DIR, "aerialknocker_death.glb"),
+}
 
 EMILIA_GLB_PATH         = os.path.join(_HERE, "assets", "models", "Emilia", "emilia_idle.glb")
 

@@ -1495,13 +1495,20 @@ class Game:
                         e._dying       = True
                         e._death_timer = 3.0
                     else:
-                        e.dead = True; node.visible = False
+                        # Toca animação de morte antes de sumir
                         self.sounds.heartless_death.play()
-                        xp = e.stats.level * 20 + random.randint(5,15)
-                        leveled = p.stats.gain_xp(xp)
-                        self.hud.add_popup(f"+{xp} XP", 1.5, (230,200,80))
-                        if leveled: self.hud.add_popup("LEVEL UP!", 3.0, (255,230,50))
-                        self._check_floor_progress()
+                        anim_e = getattr(e, '_anim', None)
+                        if anim_e is not None:
+                            anim_e.play("death", restart_if_same=True)
+                            e._anim_state = "death"
+                            e._death_anim_timer = 1.2
+                        else:
+                            e.dead = True; node.visible = False
+                            xp = e.stats.level * 20 + random.randint(5,15)
+                            leveled = p.stats.gain_xp(xp)
+                            self.hud.add_popup(f"+{xp} XP", 1.5, (230,200,80))
+                            if leveled: self.hud.add_popup("LEVEL UP!", 3.0, (255,230,50))
+                            self._check_floor_progress()
                 hit = True; break
         if self.current_floor == self.FLOOR_PUZZLE:
             self._try_activate_orb()
@@ -2159,13 +2166,19 @@ class Game:
                 e._dying       = True
                 e._death_timer = 3.0
             else:
-                e.dead = True; node.visible = False
                 self.sounds.heartless_death.play()
-                xp = e.stats.level*20 + random.randint(5,15)
-                leveled = self.player.stats.gain_xp(xp)
-                self.hud.add_popup(f"+{xp} XP", 2.0, (230,200,80))
-                if leveled: self.hud.add_popup("LEVEL UP!", 3.0, (255,230,50))
-                self._check_floor_progress()
+                anim_e = getattr(e, '_anim', None)
+                if anim_e is not None:
+                    anim_e.play("death", restart_if_same=True)
+                    e._anim_state = "death"
+                    e._death_anim_timer = 1.2
+                else:
+                    e.dead = True; node.visible = False
+                    xp = e.stats.level*20 + random.randint(5,15)
+                    leveled = self.player.stats.gain_xp(xp)
+                    self.hud.add_popup(f"+{xp} XP", 2.0, (230,200,80))
+                    if leveled: self.hud.add_popup("LEVEL UP!", 3.0, (255,230,50))
+                    self._check_floor_progress()
 
     def _use_item_explore(self, item_id):
         item = ITEM_DB.get(item_id)
@@ -2812,6 +2825,24 @@ class Game:
                 if anim is not None:
                     anim.update(dt)
                 continue
+
+            # ── Timer de animação de morte ──
+            death_timer = getattr(e, '_death_anim_timer', None)
+            if death_timer is not None:
+                e._death_anim_timer -= dt
+                anim = getattr(e, '_anim', None)
+                if anim is not None:
+                    anim.update(dt)
+                if e._death_anim_timer <= 0.0:
+                    e.dead = True
+                    node.visible = False
+                    del e._death_anim_timer
+                    xp = e.stats.level * 20 + random.randint(5,15)
+                    leveled = self.player.stats.gain_xp(xp)
+                    self.hud.add_popup(f"+{xp} XP", 1.5, (230,200,80))
+                    if leveled: self.hud.add_popup("LEVEL UP!", 3.0, (255,230,50))
+                    self._check_floor_progress()
+                continue
             
             if isinstance(e, Boss):
                 self._update_boss(boss=e, node=node, dt=dt)
@@ -2827,15 +2858,15 @@ class Game:
             # ── GERENCIADOR DE TIMERS DE ATAQUE ──
             if e.is_attacking:
                 e.attack_timer -= dt
+                anim = getattr(e, '_anim', None)
+                if anim is not None:
+                    anim.update(dt)
                 if e.attack_timer <= 0:
                     e.finish_attack_animation()
-                    
-                    # Volta para idle
-                    anim = getattr(e, '_anim', None)
                     if anim is not None:
                         anim.play("idle")
                         e._anim_state = "idle"
-                    continue
+                continue
 
             # ── SISTEMA DE WIND-UP (ATAQUE PESADO) ──
             if e.is_winding_up:
@@ -2849,6 +2880,9 @@ class Game:
                 
                 # Pisca o inimigo durante o wind-up
                 if e.windup_timer > 0:
+                    anim = getattr(e, '_anim', None)
+                    if anim is not None:
+                        anim.update(dt)
                     blink_speed = 6 + (1 - e.windup_timer / e.heavy_attack_windup) * 12
                     if int(e.windup_timer * blink_speed) % 2 == 0:
                         node.visible = True
@@ -2878,6 +2912,15 @@ class Game:
                     was_parried = e.parry_successful
                     
                     dmg = e.execute_windup_attack(self.player.stats)
+                    
+                    # Toca animação de ataque pesado (ou stun se parried)
+                    anim = getattr(e, '_anim', None)
+                    if anim is not None:
+                        fly = getattr(e, 'is_flying', False)
+                        atk_state = "downattack" if fly else "heavyattack"
+                        target_anim = "idle" if was_parried else atk_state
+                        anim.play(target_anim, restart_if_same=True)
+                        e._anim_state = target_anim
                     
                     if was_parried:
                         # ✨ PARRY BEM SUCEDIDO! ✨
@@ -2942,6 +2985,14 @@ class Game:
                         dmg = e.try_attack(self.player.stats, player_pos, "light")
                         
                         if dmg > 0:
+                            # ── Toca animação de ataque leve ──
+                            anim = getattr(e, '_anim', None)
+                            if anim is not None:
+                                fly = getattr(e, 'is_flying', False)
+                                atk_state = "baseattack" if fly else "lightattack"
+                                anim.play(atk_state, restart_if_same=True)
+                                e._anim_state = atk_state
+                            
                             self.sounds.heartless_attack.play()
                             self.sounds.subaru_hit.play()
                             self.player.stats.hp = max(0, self.player.stats.hp - dmg)

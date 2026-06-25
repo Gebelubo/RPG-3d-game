@@ -24,7 +24,9 @@ from src.config.paths import (SUBARU_GLB_FILES,
                               BEATRICE_GLB_PATH,
                               MARLUXIA_GLB_PATH,
                               HEARTLESS_GLB_PATH,
+                              HEARTLESS_GLB_DIR,
                               AERIALKNOCKER_GLB_PATH,
+                              AERIALKNOCKER_GLB_DIR,
                               SUBARU_GLB_DIR)
 
 CHARACTER_DB = {
@@ -53,18 +55,32 @@ CHARACTER_DB = {
                           glb_path=MARLUXIA_GLB_PATH, 
                           clip_names=MARLUXIA_CLIP_NAMES,
                           fallback_texture=os.path.join(os.path.dirname(MARLUXIA_GLB_PATH),"tx_Marluxia_Base.png")),
-    "aerialknocker": Character(name="aerialknocker",
-                               y_offset=AERIALKNOCKER_Y_OFFSET, 
-                               target_height=AERIALKNOCKER_TARGET_HEIGHT, 
-                               glb_path=AERIALKNOCKER_GLB_PATH, 
+    "aerialknocker": MultiClipCharacter(
+                               name="aerialknocker",
+                               y_offset=AERIALKNOCKER_Y_OFFSET,
+                               target_height=AERIALKNOCKER_TARGET_HEIGHT,
+                               files={
+                                   "Idle":       os.path.join(AERIALKNOCKER_GLB_DIR, "aerialknocker_idle.glb"),
+                                   "BaseAttack": os.path.join(AERIALKNOCKER_GLB_DIR, "aerialknocker_baseattack.glb"),
+                                   "DownAttack": os.path.join(AERIALKNOCKER_GLB_DIR, "aerialknocker_downattack.glb"),
+                                   "Death":      os.path.join(AERIALKNOCKER_GLB_DIR, "aerialknocker_death.glb"),
+                               },
+                               primary_clip="Idle",
                                clip_names=AERIALKNOCKER_CLIP_NAMES,
-                               fallback_texture=os.path.join(os.path.dirname(AERIALKNOCKER_GLB_PATH),"tx_AerialKnocker.png")),
-    "heartless": Character(name="heartless",
-                           y_offset=HEARTLESS_Y_OFFSET, 
-                           target_height=HEARTLESS_TARGET_HEIGHT, 
-                           glb_path=HEARTLESS_GLB_PATH, 
+                               fallback_texture=os.path.join(AERIALKNOCKER_GLB_DIR, "tx_AerialKnocker.png")),
+    "heartless": MultiClipCharacter(
+                           name="heartless",
+                           y_offset=HEARTLESS_Y_OFFSET,
+                           target_height=HEARTLESS_TARGET_HEIGHT,
+                           files={
+                               "Idle":         os.path.join(HEARTLESS_GLB_DIR, "heartless_idle.glb"),
+                               "NormalAttack": os.path.join(HEARTLESS_GLB_DIR, "heartless_normalattack.glb"),
+                               "HeavyAttack":  os.path.join(HEARTLESS_GLB_DIR, "heartless_heavyattack.glb"),
+                               "Death":        os.path.join(HEARTLESS_GLB_DIR, "heartless_death.glb"),
+                           },
+                           primary_clip="Idle",
                            clip_names=HEARTLESS_CLIP_NAMES,
-                           fallback_texture=os.path.join(os.path.dirname(HEARTLESS_GLB_PATH),"tx_Heartless.png"))
+                           fallback_texture=os.path.join(HEARTLESS_GLB_DIR, "tx_Heartless.png"))
 }
 
 class CharacterDB:
