@@ -100,6 +100,9 @@ class BoxHitbox(Hitbox):
 
         if player_feet >= top - 0.1:
             return
+        elif player_feet+1.8 < bottom:
+            return
+
 
         cx = max(left, min(px, right))
         cz = max(front, min(pz, back))
@@ -127,6 +130,8 @@ class BoxHitbox(Hitbox):
                 player.world_pos[0] = right + PLAYER_RADIUS
             elif min_dist == dist_front:
                 player.world_pos[2] = front - PLAYER_RADIUS
+            elif player_feet+1.8 >= bottom:
+                player.world_pos[1] = bottom - 2 - half_h
             else:
                 player.world_pos[2] = back + PLAYER_RADIUS
             return

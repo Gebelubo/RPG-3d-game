@@ -528,6 +528,9 @@ class Game:
         self._helper._add_tower_deco(self.scene, self.floor_state, "platform",
                         position=(7.0, 1.0, 0.0), scale=(0.8, 0.8, 0.8),
                         collision_radius=1.5)
+        
+        self._helper._add_tower_deco(self.scene, self.floor_state, "platform", position=(5.5, 8.5, -7), scale=(20, 1, 20))
+
         self._helper._add_tower_deco(self.scene, self.floor_state, "platform",
                         position=(9.0, 4.0, -5.0), scale=(0.2, 0.2, 0.2),
                         collision_radius=1.5)
