@@ -29,6 +29,17 @@ DEFAULT_CLIP_NAMES = {
     # Emilia — cutscene pos-boss
     "sleeping":            "Sleeping",            # loop: deitada inconsciente
     "waking":              "Waking",              # one-shot: acordando
+    # Marluxia — boss
+    "normalattack":        "NormalAttack",
+    "heavyattack":         "HeavyAttack",
+    "roundattack":         "RoundAttack",
+    "groundmagic":         "GroundMagic",
+    "shoot":               "Shoot",
+    "curse":               "Curse",
+    "taunt":               "Taunt",
+    "invincible":          "Invincible",
+    "hit":                 "Hit",
+    "death":               "Death",
 }
 
 # Estados que tocam uma vez e voltam para idle sozinhos ao terminar

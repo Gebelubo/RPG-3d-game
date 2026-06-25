@@ -64,7 +64,7 @@ class Character:
                             if real_name not in smd.clips:
                                 print(
                                     f"[{self.name}] "
-                                    f"clip '{real_name}' não encontrado. "
+                                    f"clip '{real_name}' nÃ£o encontrado. "
                                     f"Usando '{first_clip}'."
                                 )
 
@@ -254,7 +254,8 @@ class MultiClipCharacter(Character):
         target_height,
         primary_clip,
         fallback_texture=None,
-        manual_scale=None
+        manual_scale=None,
+        clip_names=None,
     ):
 
         super().__init__(
@@ -263,7 +264,8 @@ class MultiClipCharacter(Character):
             glb_path=None,
             target_height=target_height,
             fallback_texture=fallback_texture,
-            manual_scale=manual_scale
+            manual_scale=manual_scale,
+            clip_names=clip_names,
         )
 
         self.files = files

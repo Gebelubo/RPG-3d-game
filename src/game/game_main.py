@@ -1349,8 +1349,7 @@ class Game:
                     #self.hud.add_popup("Corredor limpo! Avance pela porta.", 3.0, (200,255,200))
 
         elif self.current_floor == self.FLOOR_BOSS:
-            if fs.boss and fs.boss.dead:
-                self._on_boss_defeated()
+            pass  # cutscene é disparada pelo _update_boss após animação de morte
 
     def _on_boss_defeated(self):
         pygame.mixer.music.stop()
@@ -1445,15 +1444,37 @@ class Game:
             reach_y = abs(dy) < 2.5 if fly else abs(dy) < 1.5
             if math.sqrt(dx*dx + dz*dz) < 2.0 and reach_y:
                 damage = max(1, p.stats.atk + random.randint(-2,2) - e.stats.defense)
-                actual = e.stats.take_damage(damage)
+                from src.entities.enemy import Boss as _Boss
+                _is_boss = isinstance(e, _Boss)
+                if _is_boss:
+                    # Invencível (fase 5 / enrage / fase 4): bloqueia completamente
+                    if getattr(e, 'invincible_active', False):
+                        actual = 0
+                    else:
+                        damage = self._clamp_boss_damage(e, damage)
+                        actual = e.receive_hit(damage)
+                else:
+                    actual = e.stats.take_damage(damage)
                 self.hud.add_popup(f"-{actual} HP", 1.0, (255,200,140))
                 if not e.stats.is_alive():
-                    e.dead = True; node.visible = False
-                    xp = e.stats.level * 20 + random.randint(5,15)
-                    leveled = p.stats.gain_xp(xp)
-                    self.hud.add_popup(f"+{xp} XP", 1.5, (230,200,80))
-                    if leveled: self.hud.add_popup("LEVEL UP!", 3.0, (255,230,50))
-                    self._check_floor_progress()
+                    from src.entities.enemy import Boss as _Boss2
+                    if isinstance(e, _Boss2) and not getattr(e, '_dying', False):
+                        # Boss: inicia animação de morte, não some ainda
+                        e._dying       = True
+                        e._death_timer = 3.0
+                        e.is_attacking = False
+                        e.aggro        = False
+                        anim = getattr(e, '_anim', None)
+                        if anim is not None:
+                            anim.play("death")
+                            e._anim_state = "death"
+                    else:
+                        e.dead = True; node.visible = False
+                        xp = e.stats.level * 20 + random.randint(5,15)
+                        leveled = p.stats.gain_xp(xp)
+                        self.hud.add_popup(f"+{xp} XP", 1.5, (230,200,80))
+                        if leveled: self.hud.add_popup("LEVEL UP!", 3.0, (255,230,50))
+                        self._check_floor_progress()
                 hit = True; break
         if self.current_floor == self.FLOOR_PUZZLE:
             self._try_activate_orb()
@@ -2057,19 +2078,39 @@ class Game:
             if self.player_anim is not None:
                 self.player_anim.play("beatrice", restart_if_same=True)
             self.hud.add_popup(f"Shamac! {e.stats.name} perdeu sua pista.", 2.2, (180,120,255)); return
-        dmg = e.stats.take_damage(sp.damage)
+        from src.entities.enemy import Boss as _Boss
+        _is_boss = isinstance(e, _Boss)
+        if _is_boss:
+            if getattr(e, 'invincible_active', False):
+                _spell_dmg = 0
+            else:
+                _spell_dmg = self._clamp_boss_damage(e, sp.damage)
+            dmg = e.receive_hit(_spell_dmg) if _spell_dmg > 0 else 0
+        else:
+            dmg = e.stats.take_damage(sp.damage)
         if spell_id == "minya":
             self._show_beatrice()
             if self.player_anim is not None:
                 self.player_anim.play("beatrice", restart_if_same=True)
         self.hud.add_popup(f"{sp.name}! -{dmg} HP", 2.0, (180,120,255))
         if not e.stats.is_alive():
-            e.dead = True; node.visible = False
-            xp = e.stats.level*20 + random.randint(5,15)
-            leveled = self.player.stats.gain_xp(xp)
-            self.hud.add_popup(f"+{xp} XP", 2.0, (230,200,80))
-            if leveled: self.hud.add_popup("LEVEL UP!", 3.0, (255,230,50))
-            self._check_floor_progress()
+            from src.entities.enemy import Boss as _Boss2
+            if isinstance(e, _Boss2) and not getattr(e, '_dying', False):
+                e._dying       = True
+                e._death_timer = 3.0
+                e.is_attacking = False
+                e.aggro        = False
+                anim = getattr(e, '_anim', None)
+                if anim is not None:
+                    anim.play("death")
+                    e._anim_state = "death"
+            else:
+                e.dead = True; node.visible = False
+                xp = e.stats.level*20 + random.randint(5,15)
+                leveled = self.player.stats.gain_xp(xp)
+                self.hud.add_popup(f"+{xp} XP", 2.0, (230,200,80))
+                if leveled: self.hud.add_popup("LEVEL UP!", 3.0, (255,230,50))
+                self._check_floor_progress()
 
     def _use_item_explore(self, item_id):
         item = ITEM_DB.get(item_id)
@@ -2290,6 +2331,10 @@ class Game:
                 math.atan2(move_x, move_z)
             )
 
+        # ── Curse: inverte controles de movimento ────────────────────────────
+        if getattr(self, '_curse_active', False):
+            move_x = -move_x
+            move_z = -move_z
         self.move_x = move_x
         self.move_z = move_z
         self.move_mag = mag
@@ -2661,7 +2706,6 @@ class Game:
     def _update_enemies(self, dt):
         for e, node in self.floor_state.enemies:
             if e.dead: continue
-            e.update(self.player.world_pos, dt)
             if isinstance(e, Boss):
                 self._update_boss(boss=e, node=node, dt=dt)
                 return 
@@ -2710,77 +2754,443 @@ class Game:
                     e2.world_pos[0] -= dx*push; e2.world_pos[2] -= dz*push
 
     def _update_boss(self, boss, node, dt):
-        print("UPDATE BOSS")
+        if getattr(boss, '_dying', False):
+            # Toca animação de morte e aguarda timer antes da cutscene
+            anim = getattr(boss, '_anim', None)
+            if anim is not None:
+                anim.update(dt)
+            boss._death_timer = getattr(boss, '_death_timer', 3.0) - dt
+            if boss._death_timer <= 0.0:
+                boss._dying = False
+                boss.dead   = True
+                node.visible = False
+                xp = boss.stats.level * 20 + 30
+                self.player.stats.gain_xp(xp)
+                self.hud.add_popup(f"+{xp} XP", 2.0, (230,200,80))
+                self._on_boss_defeated()
+            return
         if boss.dead:
             return
 
         boss.update(self.player.world_pos, dt)
 
-        y_off = getattr(boss, "_y_offset", 0.0)
+        # ── Fase 3+: flee — mantém distância do player ───────────────────
+        _boss_phase = getattr(boss, 'phase', 1)
+        if _boss_phase >= 3 and not getattr(boss, '_dying', False):
+            _px, _pz = self.player.world_pos[0], self.player.world_pos[2]
+            _bx, _bz = boss.world_pos[0], boss.world_pos[2]
+            _dx, _dz = _bx - _px, _bz - _pz
+            _dist    = math.sqrt(_dx*_dx + _dz*_dz) or 1.0
+            _flee_min_dist = 5.5   # distância mínima que tenta manter
+            _flee_speed    = 3.5   # m/s
+            if _dist < _flee_min_dist:
+                # Move para longe do player
+                _nx, _nz = _dx / _dist, _dz / _dist
+                _new_bx  = _bx + _nx * _flee_speed * dt
+                _new_bz  = _bz + _nz * _flee_speed * dt
+                # Clamp nas paredes da arena
+                _hw = ROOM_W / 2 - 1.2
+                _hd = ROOM_D / 2 - 1.2
+                _new_bx = max(-_hw, min(_hw, _new_bx))
+                _new_bz = max(-_hd, min(_hd, _new_bz))
+                # Verifica se a nova posição é melhor (mais longe do player)
+                _new_dist = math.sqrt((_new_bx-_px)**2 + (_new_bz-_pz)**2)
+                if _new_dist > _dist - 0.01:  # só move se realmente recua
+                    boss.world_pos[0] = _new_bx
+                    boss.world_pos[2] = _new_bz
 
+        y_off = getattr(boss, "_y_offset", 0.0)
         node.position = [
             boss.world_pos[0],
             boss.world_pos[1] + y_off,
-            boss.world_pos[2]
+            boss.world_pos[2],
         ]
-
         node.rotation[1] = boss.facing_deg
 
         anim = getattr(boss, "_anim", None)
-
         if anim is not None:
-
-            target_state = boss.state
-
-            current_state = getattr(
-                boss,
-                "_anim_state",
-                None
-            )
-
+            target_state  = boss.state
+            current_state = getattr(boss, "_anim_state", None)
             if current_state != target_state:
                 boss._anim_state = target_state
                 anim.play(target_state)
-
             anim.update(dt)
 
+        # ── Timer de animação: deixa o clipe tocar antes de aplicar hit ──
+        _spd = getattr(boss, '_atk_speed_mult', 1.0)
+        ANIM_HIT_DELAY = {
+            "normalattack": 0.5  / _spd,
+            "heavyattack":  0.7  / _spd,
+            "roundattack":  0.6  / _spd,
+            "shoot":        0.6  / _spd,
+            "curse":        1.2  / _spd,
+            "taunt":        1.0  / _spd,
+            "groundmagic":  0.8  / _spd,
+        }
+        if boss.is_attacking:
+            delay = ANIM_HIT_DELAY.get(boss.state, 0.5 / _spd)
+            boss._atk_timer = getattr(boss, '_atk_timer', 0.0) + dt
+            if boss._atk_timer < delay:
+                # ainda tocando animação — atualiza anim e volta
+                anim = getattr(boss, '_anim', None)
+                if anim is not None:
+                    anim.update(dt)
+                return
+            boss._atk_timer = 0.0
+        else:
+            boss._atk_timer = 0.0
+        # ── Transições de fase ───────────────────────────────────────────────
+        # IMPORTANTE: boss.phase agora é controlado SOMENTE pelo enemy.py
+        # (MarluxiaBoss.update). Aqui só LEMOS boss.phase para disparar
+        # popups/efeitos colaterais — nunca escrevemos nela, senão voltamos
+        # a conflitar com os thresholds internos do enemy.py (curse parava
+        # de disparar pois o game_main já tinha avançado boss.phase antes).
+        hp_pct      = boss.stats.hp / max(1, boss.stats.max_hp)
+        _cur_phase  = getattr(boss, 'phase', 1)
+
+        # Fase 2 – velocidade de ataque ×2 (acompanha o enemy.py: PHASE2_THRESH)
+        if not getattr(boss, '_phase2_triggered', False) and _cur_phase >= 2 and not boss.dead:
+            boss._phase2_triggered = True
+            boss._atk_speed_mult   = 2.0
+            self.hud.add_popup("FASE 2!", 2.5, (255, 160, 0))
+
+        # Fase 3 – curse + shoot habilitados (disparada pelo enemy.py)
+        if not getattr(boss, '_phase3_triggered', False) and _cur_phase >= 3 and not boss.dead:
+            boss._phase3_triggered = True
+            self.hud.add_popup("FASE 3!", 2.5, (200, 80, 255))
+
+        # Fase 4 – fúria (2.5× velocidade de ataque, acompanha enemy.py: PHASE4_THRESH)
+        if not getattr(boss, '_phase4_triggered', False) and _cur_phase >= 4 and not boss.dead:
+            boss._phase4_triggered = True
+            boss._atk_speed_mult   = 2.5
+            self.hud.add_popup("FÚRIA!", 2.5, (255, 80, 0))
+
+        # Fase 5 – 1 HP: enrage (invencível 10s + buracos negros)
+        # Esta fase é exclusiva do game_main (enemy.py não conhece phase 5),
+        # então continua sendo controlada por HP direto — mas agora não
+        # conflita mais, pois o enemy.py nunca chega a usar o valor 5.
+        # IMPORTANTE: força a invencibilidade de 10s mesmo que o boss já
+        # esteja invencível por outro motivo (ex: fase 4 do enemy.py),
+        # garantindo que o enrage de 1 HP sempre tenha prioridade.
+        if not getattr(boss, '_enrage_triggered', False) and boss.stats.hp <= 1 and not boss.dead:
+            boss._enrage_triggered = True
+            boss.phase             = 5
+            boss._enrage_timer     = 10.0
+            boss.invincible_active = True
+            boss._enrage_bh_active = True
+            boss.stats.hp          = 1
+            # Mantém o invincible_timer do enemy.py "cheio" durante o enrage,
+            # para que o próprio enemy.py não zere invincible_active sozinho
+            # antes dos 10s do game_main terminarem.
+            if hasattr(boss, 'invincible_timer'):
+                boss.invincible_timer = 10.0
+            self.hud.add_popup("ENRAGE!", 3.0, (255, 0, 80))
+            self.hud.add_popup("Marluxia está invencível!", 2.5, (255, 80, 80))
+
+        if getattr(boss, '_enrage_timer', 0.0) > 0.0:
+            boss._enrage_timer -= dt
+            # Reforça a invencibilidade a cada frame enquanto o enrage da
+            # fase 5 estiver rodando, mesmo que o enemy.py tente desligá-la
+            # por conta própria (ex: invincible_timer da fase 4 zerando).
+            boss.invincible_active = True
+            if hasattr(boss, 'invincible_timer'):
+                boss.invincible_timer = max(boss.invincible_timer, boss._enrage_timer)
+            if boss._enrage_timer <= 0.0:
+                boss._enrage_timer     = 0.0
+                boss.invincible_active = False
+                boss._enrage_bh_active = False
+                boss.phase = 4
+                if hasattr(boss, 'invincible_timer'):
+                    boss.invincible_timer = 0.0
+                # Reativa a IA do boss para a fase 2
+                boss.aggro        = True
+                boss.is_attacking = False
+                boss._atk_timer   = 0.0
+                # Reseta cooldowns internos conhecidos
+                for _cd_attr in ('_bh_cd', '_blackhole_cd', 'bh_cooldown', '_attack_cd', '_cd'):
+                    if hasattr(boss, _cd_attr):
+                        setattr(boss, _cd_attr, 0.0)
+                self.hud.add_popup("Marluxia pode ser atacado!", 2.0, (180, 255, 180))
+
+        # Fases 3/4/5: spawna buracos negros com frequência crescente
+        _bh_phase = getattr(boss, 'phase', 1)
+        if _bh_phase >= 3 and not getattr(boss, '_dying', False):
+            import random as _rnd, math as _m2
+            # fase 3: 1 BH a cada 1.8s | fase 4: 2 a cada 1.0s | fase 5: 2 a cada 0.4s
+            _bh_cd   = {3: 1.8, 4: 1.0, 5: 0.25}.get(_bh_phase, 1.8)
+            _bh_qty  = {3: 1, 4: 2, 5: 3}.get(_bh_phase, 1)
+            boss._enrage_bh_spawn_cd = getattr(boss, '_enrage_bh_spawn_cd', 0.0) - dt
+            if boss._enrage_bh_spawn_cd <= 0.0:
+                boss._enrage_bh_spawn_cd = _bh_cd
+                bx_base, bz_base = boss.world_pos[0], boss.world_pos[2]
+                for _ in range(_bh_qty):
+                    angle = _rnd.uniform(0, 2 * _m2.pi)
+                    dist  = _rnd.uniform(1.5, 5.0)
+                    bh_x  = bx_base + _m2.cos(angle) * dist
+                    bh_z  = bz_base + _m2.sin(angle) * dist
+                    if not hasattr(boss, 'blackholes'):
+                        boss.blackholes = []
+                    boss.blackholes.append({
+                        'pos':    (bh_x, bh_z),
+                        'timer':  3.5,
+                        'radius': 1.2,
+                        'damage': 12,
+                    })
+
+        self._update_boss_checkpoints(boss, dt)
+        self._process_blackholes(boss, dt)
+        self._update_projectiles(dt)
+        self._update_curse_effect(dt)
+
+        if boss.invincible_active:
+            return
+
         if boss.aggro and self.player.invincible <= 0.0:
+            dx   = boss.world_pos[0] - self.player.world_pos[0]
+            dz   = boss.world_pos[2] - self.player.world_pos[2]
+            dist = math.sqrt(dx * dx + dz * dz)
 
-            dx = boss.world_pos[0] - self.player.world_pos[0]
-            dz = boss.world_pos[2] - self.player.world_pos[2]
+            atk_states = {"normalattack", "heavyattack", "roundattack", "shoot", "groundmagic"}
+            if boss.is_attacking and boss.state in atk_states:
+                if boss.state == "shoot":
+                    self._spawn_shoot_projectile(boss)
+                    boss._finish_attack()
+                else:
+                    attack_range = boss.attack_range
+                    if boss.current_attack:
+                        attack_range = boss.current_attack.get("range", attack_range)
+                    if dist < attack_range:
+                        dmg = boss.try_attack(self.player.stats)
+                        if dmg and dmg > 0:
+                            self.sounds.hit_sfx.play()
+                            self.player.invincible       = 0.6
+                            self.player.is_taking_damage = True
+                            self.player.reaction_timer   = self.player.REACTION_TIME
+                            self.hud.add_popup(f"-{dmg} HP", 1.2, (255, 80, 80))
+                            if self.player.is_dead:
+                                self._trigger_death()
+                    else:
+                        boss._finish_attack()
+            elif boss.is_attacking and boss.state == "taunt":
+                boss.try_attack(self.player.stats)
+            elif boss.is_attacking and boss.state == "curse":
+                self._apply_curse()
+                boss.try_attack(self.player.stats)
+                boss.is_attacking = False   # libera o boss após curse
 
-            dist = math.sqrt(dx*dx + dz*dz)
+        if boss.dead:
+            anim = getattr(boss, "_anim", None)
+            if anim is not None:
+                anim.play("death")
+                boss._anim_state = "death"
 
-            attack_range = boss.attack_range
+    def _clamp_boss_damage(self, boss, damage):
+        """Clampeia dano no boss nos checkpoints de fase.
+        Checkpoints: 60% (fase 2), 40% (fase 3), 10% (fase 4/furia), 1 HP (enrage).
+        Em cada limiar trava o dano por 2s antes de liberar a proxima fase.
+        Fase 4+ (pos-invencibilidade): dano minimo 4, checkpoint de 10% ignorado.
+        """
+        if getattr(boss, '_dying', False): return 0
+        if getattr(boss, '_enrage_timer', 0.0) > 0.0: return 0
+        if getattr(boss, 'invincible_active', False): return 0
 
-            if boss.current_attack:
-                attack_range = boss.current_attack["range"]
+        max_hp = boss.stats.max_hp
+        hp     = boss.stats.hp
+        _boss_phase = getattr(boss, 'phase', 1)
 
-            if dist < attack_range:
+        CHECKPOINTS = [
+            (int(max_hp * 0.60), '_cp_60_freeze', '_cp_60_done'),
+            (int(max_hp * 0.40), '_cp_40_freeze', '_cp_40_done'),
+            (int(max_hp * 0.10), '_cp_10_freeze', '_cp_10_done'),
+            (1,                  '_cp_1_freeze',  '_cp_1_done'),
+        ]
 
-                dmg = boss.try_attack(self.player.stats)
-                print("TRY ATTACK")
-                if dmg > 0:
-                    print("DAMAGE")
-                    self.sounds.hit_sfx.play()
+        for threshold, freeze_attr, done_attr in CHECKPOINTS:
+            if getattr(boss, done_attr, False):
+                continue
+            if hp <= threshold:
+                # Ja passou desse limiar — marca como done e segue
+                setattr(boss, done_attr, True)
+                continue
+            if hp - damage > threshold:
+                # Hit nao cruzaria o limiar, passa normal
+                break
+            # Checkpoint de 10% na fase 4+: boss ja passou pela invencibilidade,
+            # nao clampeia mais — apenas marca o checkpoint como concluido.
+            if threshold == int(max_hp * 0.10) and _boss_phase >= 4:
+                setattr(boss, done_attr, True)
+                break
+            # Checkpoint de 1 HP (antes do enrage): trava em 1 para o enrage
+            # ser ativado no proximo frame pelo _update_boss.
+            if threshold == 1 and not getattr(boss, '_enrage_triggered', False):
+                damage = max(0, hp - 1)
+                break
+            # Demais limiares: clampeia e inicia freeze
+            damage = max(0, hp - threshold)
+            if not getattr(boss, freeze_attr, False):
+                setattr(boss, freeze_attr, True)
+                setattr(boss, freeze_attr + '_timer', 2.0)
+            break
 
-                    self.player.invincible = 0.5
+        # Fase 4 pos-invencibilidade: dano minimo por hit e 4
+        if _boss_phase >= 4 and not getattr(boss, 'invincible_active', False) and damage > 0:
+            damage = max(4, damage)
 
-                    self.player.is_taking_damage = True
+        return damage
 
-                    self.player.reaction_timer = (
-                        self.player.REACTION_TIME
-                    )
+    def _update_boss_checkpoints(self, boss, dt):
+        """Decrementa timers de freeze e libera o proximo checkpoint."""
+        CHECKPOINTS = [
+            ('_cp_60_freeze', '_cp_60_done'),
+            ('_cp_40_freeze', '_cp_40_done'),
+            ('_cp_10_freeze', '_cp_10_done'),
+            ('_cp_1_freeze',  '_cp_1_done'),
+        ]
+        for freeze_attr, done_attr in CHECKPOINTS:
+            if not getattr(boss, freeze_attr, False): continue
+            if getattr(boss, done_attr, False): continue
+            timer_attr = freeze_attr + '_timer'
+            timer = getattr(boss, timer_attr, 2.0) - dt
+            setattr(boss, timer_attr, timer)
+            if timer <= 0.0:
+                setattr(boss, freeze_attr, False)
+                setattr(boss, done_attr, True)
 
-                    self.hud.add_popup(
-                        f"-{dmg} HP",
-                        1.2,
-                        (255,80,80)
-                    )
+    def _apply_curse(self):
+        if getattr(self, "_curse_timer", 0.0) > 0.0:
+            return
+        self._curse_timer  = 30.0
+        self._curse_active = True
+        self.hud.add_popup("MALDIÇÃO!", 3.0, (180, 0, 255))
+        self.hud.add_popup("Controles invertidos por 30s!", 2.5, (200, 100, 255))
 
-                    if self.player.is_dead:
-                        self._trigger_death()
-        
+    def _update_curse_effect(self, dt):
+        timer = getattr(self, "_curse_timer", 0.0)
+        if timer <= 0.0:
+            self._curse_active = False
+            return
+        self._curse_timer  = timer - dt
+        self._curse_active = True
+        intensity = min(1.0, self._curse_timer / 15.0) * 0.45
+        self.hud.draw_rect(0, 0, self.screen_w, self.screen_h, (0.15, 0.0, 0.25), intensity)
+
+    def _spawn_shoot_projectile(self, boss):
+        """Cria um projétil que viaja da posição do boss até o player."""
+        import math as _m
+        from src.engine.mesh  import make_sphere, ProceduralMesh
+        from src.engine.scene import SceneNode
+        bx, by, bz = boss.world_pos
+        px, py, pz = self.player.world_pos
+        dx, dz = px - bx, pz - bz
+        dist = _m.sqrt(dx*dx + dz*dz) or 1.0
+        speed = 10.0  # metros/segundo
+        pv, pi = make_sphere(0.18, 8, 8)
+        pm = ProceduralMesh(
+            "shoot_proj", pv, pi,
+            base_color=(0.7, 0.1, 0.9),
+            ka=0.4, kd=0.6, ks=1.0, shininess=128
+        )
+        node = SceneNode("shoot_proj", mesh=pm,
+                         position=[bx, 1.2, bz])
+        self.scene.add(node)
+        proj = {
+            "node":   node,
+            "vel":    [dx/dist * speed, 0.0, dz/dist * speed],
+            "timer":  4.0,   # expira após 4s
+            "damage": max(1, boss.stats.atk + 5 - self.player.stats.defense),
+        }
+        if not hasattr(self, "_shoot_projectiles"):
+            self._shoot_projectiles = []
+        self._shoot_projectiles.append(proj)
+
+    def _update_projectiles(self, dt):
+        """Move projéteis e detecta colisão com o player."""
+        import math as _m
+        alive = []
+        for proj in getattr(self, "_shoot_projectiles", []):
+            proj["timer"] -= dt
+            node = proj["node"]
+            node.position[0] += proj["vel"][0] * dt
+            node.position[2] += proj["vel"][2] * dt
+
+            if proj["timer"] <= 0.0:
+                try: self.scene.remove(node)
+                except Exception: pass
+                continue
+
+            # Colisão com player
+            px, pz = self.player.world_pos[0], self.player.world_pos[2]
+            dx = node.position[0] - px
+            dz = node.position[2] - pz
+            if _m.sqrt(dx*dx + dz*dz) < 0.6 and self.player.invincible <= 0.0:
+                dmg = proj["damage"]
+                self.player.stats.hp         = max(0, self.player.stats.hp - dmg)
+                self.player.invincible       = 0.6
+                self.player.is_taking_damage = True
+                self.player.reaction_timer   = self.player.REACTION_TIME
+                self.hud.add_popup(f"-{dmg} HP (shoot)", 1.2, (180, 50, 255))
+                if self.player.is_dead:
+                    self._trigger_death()
+                try: self.scene.remove(node)
+                except Exception: pass
+                continue
+
+            alive.append(proj)
+        self._shoot_projectiles = alive
+
+    def _process_blackholes(self, boss, dt):
+        from src.engine.mesh  import make_plane, ProceduralMesh
+        from src.engine.scene import SceneNode
+        import math as _m
+        alive = []
+        for bh in getattr(boss, "blackholes", []):
+            bh["timer"] -= dt
+
+            # Cria SceneNode 3D no chão na primeira vez
+            if "node" not in bh:
+                r    = bh.get("radius", 1.2)
+                diam = r * 2.4
+                bv, bi = make_plane(diam, diam, divs=2)
+                bm = ProceduralMesh(
+                    "blackhole", bv, bi,
+                    base_color=(0.05, 0.0, 0.18),
+                    ka=0.05, kd=0.2, ks=0.9, shininess=80
+                )
+                bx, bz = bh["pos"]
+                bnode = SceneNode(
+                    "blackhole", mesh=bm,
+                    position=[bx, 0.02, bz],
+                )
+                self.scene.add(bnode)
+                bh["node"] = bnode
+
+            if bh["timer"] <= 0.0:
+                node = bh.get("node")
+                if node is not None:
+                    try: self.scene.remove(node)
+                    except Exception: pass
+                continue
+
+            alive.append(bh)
+
+            # Pulsa escala
+            pulse = 1.0 + 0.1 * _m.sin(bh["timer"] * 5.0)
+            bh["node"].scale = [pulse, 1.0, pulse]
+
+            if self.player.invincible > 0.0:
+                continue
+            px, pz = self.player.world_pos[0], self.player.world_pos[2]
+            bx, bz = bh["pos"]
+            if math.sqrt((px - bx)**2 + (pz - bz)**2) < bh.get("radius", 1.2):
+                dmg = bh.get("damage", 8)
+                self.player.stats.hp         = max(0, self.player.stats.hp - dmg)
+                self.player.invincible       = 0.8
+                self.player.is_taking_damage = True
+                self.player.reaction_timer   = self.player.REACTION_TIME
+                self.hud.add_popup(f"-{dmg} HP (buraco negro)", 1.0, (120, 0, 200))
+                if self.player.is_dead:
+                    self._trigger_death()
+        boss.blackholes = alive
     def _render(self):
         glPolygonMode(GL_FRONT_AND_BACK, GL_LINE if self.wireframe else GL_FILL)
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
@@ -2827,13 +3237,13 @@ class Game:
         (Heartless terrestre e AerialKnocker). Inimigos com fallback .obj
         já estão na scene e são renderizados por scene.draw() normalmente."""
         for e, node in self.floor_state.enemies:
-            if e.dead:
+            if e.dead and not getattr(e, '_dying', False):
                 continue
             skinned_mesh = getattr(e, '_skinned_mesh', None)
             anim         = getattr(e, '_anim', None)
             if skinned_mesh is None or anim is None:
                 continue
-            if not node.visible:
+            if not node.visible and not getattr(e, '_dying', False):
                 continue
             self._render_skinned(node, skinned_mesh, anim)
 
@@ -3084,6 +3494,44 @@ class Game:
         if self.game_mode == "death":
             h.draw_death_screen(); return
 
+        # ── Barra de vida do boss (só na sala do boss) ──────────────────────
+        if self.current_floor == self.FLOOR_BOSS:
+            boss = getattr(self.floor_state, 'boss', None)
+            if boss is not None and not boss.dead:
+                BAR_W   = 400
+                BAR_H   = 18
+                BAR_X   = sw // 2 - BAR_W // 2
+                BAR_Y   = 48
+                PADDING = 4
+                h.draw_rect(
+                    BAR_X - PADDING * 2, BAR_Y - PADDING - 16,
+                    BAR_W + PADDING * 4, BAR_H + PADDING * 2 + 20,
+                    (0.04, 0.0, 0.08), alpha=0.82,
+                )
+                h.draw_text("MARLUXIA", sw // 2, BAR_Y - 14, 13, (220, 120, 255), center=True)
+                h.draw_rect(BAR_X, BAR_Y, BAR_W, BAR_H, (0.12, 0.02, 0.18), alpha=1.0)
+                hp_pct = max(0.0, boss.stats.hp / boss.stats.max_hp)
+                fill_w = int(BAR_W * hp_pct)
+                r = 0.55 + 0.45 * (1.0 - hp_pct)
+                g = 0.05
+                b = 0.80 * hp_pct
+                if fill_w > 0:
+                    h.draw_rect(BAR_X, BAR_Y, fill_w, BAR_H, (r, g, b), alpha=1.0)
+                for ox, oy, bw, bh in [
+                    (BAR_X - 1, BAR_Y - 1, BAR_W + 2, 1),
+                    (BAR_X - 1, BAR_Y + BAR_H, BAR_W + 2, 1),
+                    (BAR_X - 1, BAR_Y, 1, BAR_H),
+                    (BAR_X + BAR_W, BAR_Y, 1, BAR_H),
+                ]:
+                    h.draw_rect(ox, oy, bw, bh, (0.8, 0.4, 1.0), alpha=0.9)
+                h.draw_text(
+                    f"{max(0, boss.stats.hp)} / {boss.stats.max_hp}",
+                    sw // 2, BAR_Y + 2, 11, (230, 200, 255), center=True,
+                )
+                phase = getattr(boss, 'phase', 1)
+                if phase > 1:
+                    h.draw_text(f"FASE {phase}", BAR_X + BAR_W + PADDING * 2 + 4, BAR_Y + 2, 11, (255, 80, 200))
+        # (buracos negros desenhados como meshes 3D em _process_blackholes)
         if self.game_mode != "menu":
             h.draw_main_hud(self.player, self.game_mode)
         else:
@@ -3417,6 +3865,7 @@ class Game:
     def run(self):
         while True:
             dt = min(self.clock.tick(60)/1000.0, 0.05)
+            self._last_dt = dt
             self.input.update()
             if self.input.should_quit: break
             if self.input.resize_event:

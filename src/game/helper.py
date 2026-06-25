@@ -73,10 +73,66 @@ class Helper:
         char = self.chardb.get_char("emilia")
         return char.load_skinned(position=position, rotation=rotation)
     
-    def load_skinned_marluxia(self, position, rotation):
-        char = self.chardb.get_char("marluxia")
-        return char.load_skinned(position=position, rotation=rotation)
-    
+    def load_skinned_marluxia(self, position=(0, 0, -8), rotation=(0, 180, 0)):
+        import os
+        from src.config.paths import MARLUXIA_GLB_PATH
+        from src.config.constants import (MARLUXIA_CLIP_NAMES,
+                                           MARLUXIA_Y_OFFSET,
+                                           MARLUXIA_TARGET_HEIGHT)
+        from src.entities.character import MultiClipCharacter
+
+        marl_dir = os.path.dirname(MARLUXIA_GLB_PATH)
+
+        clip_file_map = {
+            "Idle":         "marluxia_idle.glb",
+            "NormalAttack": "marluxia_normalattack.glb",
+            "HeavyAttack":  "marluxia_heavyattack.glb",
+            "RoundAttack":  "marluxia_roundattack.glb",
+            "GroundMagic":  "marluxia_groundmagic.glb",
+            "Shoot":        "marluxia_shoot.glb",
+            "Curse":        "marluxia_curse.glb",
+            "Taunt":        "marluxia_taunt.glb",
+            "Invincible":   "marluxia_invincible.glb",
+            "Hit":          "marluxia_hit.glb",
+            "Death":        "marluxia_death.glb",
+        }
+
+        files = {}
+        for clip_name, filename in clip_file_map.items():
+            full_path = os.path.join(marl_dir, filename)
+            if os.path.exists(full_path):
+                files[clip_name] = full_path
+            else:
+                print(f"[Marluxia] GLB não encontrado, ignorando: {filename}")
+
+        if not files:
+            print("[Marluxia] Nenhum GLB encontrado — usando fallback.")
+            return None, None, None
+
+        priority = ["Idle", "NormalAttack", "HeavyAttack"]
+        primary  = next((c for c in priority if c in files), next(iter(files)))
+
+        try:
+            char = MultiClipCharacter(
+                name="marluxia",
+                y_offset=MARLUXIA_Y_OFFSET,
+                target_height=MARLUXIA_TARGET_HEIGHT,
+                files=files,
+                fallback_texture=os.path.join(marl_dir, "tx_Marluxia_Base.png"),
+                primary_clip=primary,
+                clip_names=MARLUXIA_CLIP_NAMES,
+            )
+            node, skinned_mesh, anim = char.load_skinned(
+                position=position,
+                rotation=list(rotation),
+            )
+            return node, skinned_mesh, anim
+        except Exception as exc:
+            import traceback
+            print(f"[Marluxia] Falha ao carregar MultiClipCharacter: {exc}")
+            traceback.print_exc()
+            return None, None, None
+
     def load_skinned_heartless(self, position, rotation):
         char = self.chardb.get_char("heartless")
         return char.load_skinned(position=position, rotation=rotation)

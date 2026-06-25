@@ -52,7 +52,19 @@ EMILIA_MANUAL_SCALE     = 0.75  # escala manual: GLB tem scale:100 nos nodes, au
 # Marluxia animado – mesmo pipeline da Beatrice/AerialKnocker (NGC Beatrice)
 MARLUXIA_TARGET_HEIGHT  = 0.5  # aumentado de 1.9 → 2.5 (ajuste à vontade)
 MARLUXIA_Y_OFFSET       = 0.0
-MARLUXIA_CLIP_NAMES     = {"idle": "mixamo.com"}  # preenchido dinamicamente
+MARLUXIA_CLIP_NAMES = {
+    "idle":          "Idle",
+    "normalattack":  "NormalAttack",
+    "heavyattack":   "HeavyAttack",
+    "roundattack":   "RoundAttack",
+    "groundmagic":   "GroundMagic",
+    "shoot":         "Shoot",
+    "curse":         "Curse",
+    "taunt":         "Taunt",
+    "invincible":    "Invincible",
+    "hit":           "Hit",
+    "death":         "Death",
+}  # preenchido dinamicamente
 
 BEATRICE_CLIP_NAMES = {"idle": "Swim_Idle_Loop"}
 
