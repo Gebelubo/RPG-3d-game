@@ -2894,21 +2894,34 @@ class Game:
             boss.invincible_active = True
             if hasattr(boss, 'invincible_timer'):
                 boss.invincible_timer = max(boss.invincible_timer, boss._enrage_timer)
-            if boss._enrage_timer <= 0.0:
-                boss._enrage_timer     = 0.0
-                boss.invincible_active = False
-                boss._enrage_bh_active = False
-                boss.phase = 4
-                if hasattr(boss, 'invincible_timer'):
-                    boss.invincible_timer = 0.0
-                # Reativa a IA do boss para a fase 2
-                boss.aggro        = True
-                boss.is_attacking = False
-                boss._atk_timer   = 0.0
-                # Reseta cooldowns internos conhecidos
-                for _cd_attr in ('_bh_cd', '_blackhole_cd', 'bh_cooldown', '_attack_cd', '_cd'):
-                    if hasattr(boss, _cd_attr):
-                        setattr(boss, _cd_attr, 0.0)
+
+            # ── Shoot periódico na fase 5 ─────────────────────────────────
+            boss._enrage_shoot_cd = getattr(boss, '_enrage_shoot_cd', 0.0) - dt
+            if boss._enrage_shoot_cd <= 0.0:
+                self._spawn_shoot_projectile(boss)
+                boss._enrage_shoot_cd = 2.5   # dispara a cada 2.5s
+
+        # IMPORTANTE: o cleanup fica FORA do bloco "> 0" para que seja
+        # executado no mesmo frame em que o timer cruza zero (após o -= dt
+        # acima fazer boss._enrage_timer ficar <= 0).
+        if getattr(boss, '_enrage_triggered', False) and getattr(boss, '_enrage_timer', 1.0) <= 0.0 \
+                and getattr(boss, '_enrage_bh_active', False):
+            boss._enrage_timer     = 0.0
+            boss.invincible_active = False
+            boss._enrage_bh_active = False
+            boss.phase = 4
+            if hasattr(boss, 'invincible_timer'):
+                boss.invincible_timer = 0.0
+            # Reativa a IA do boss
+            boss.aggro        = True
+            boss.is_attacking = False
+            boss._atk_timer   = 0.0
+            boss._enrage_shoot_cd = 0.0
+            # Reseta cooldowns internos conhecidos
+            for _cd_attr in ('_bh_cd', '_blackhole_cd', 'bh_cooldown', '_attack_cd', '_cd'):
+                if hasattr(boss, _cd_attr):
+                    setattr(boss, _cd_attr, 0.0)
+            self.hud.add_popup("FÚRIA ENCERRADA!", 2.5, (255, 160, 0))
 
         # Fases 3/4/5: spawna buracos negros com frequência crescente
         _bh_phase = getattr(boss, 'phase', 1)
