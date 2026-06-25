@@ -435,7 +435,6 @@ class Game:
         }
         builders[floor_idx]()
         if show_story and floor_idx == self.FLOOR_ENTRY:
-            self.sounds.subaru_myname.play()
             self._start_story()
 
     def _build_floor_entry(self):
@@ -1173,6 +1172,7 @@ class Game:
         self.story_active = False
         self.game_mode    = "explore"
         self.input.capture_mouse(True)
+        self.sounds.subaru_myname.play()
 
     def _show_ending(self):
         # Mantido por compatibilidade; a cutscene real é orquestrada por
@@ -1289,7 +1289,9 @@ class Game:
         self.game_mode = "menu"; self.input.capture_mouse(False)
 
     def _trigger_death(self):
+        self.sounds.subaru_death.sfx.set_volume(1.0)
         self.sounds.subaru_death.play()
+
         self.game_mode = "death"; self.death_timer = 3.5; self.input.capture_mouse(False)
 
     def _respawn(self):
@@ -3019,6 +3021,12 @@ class Game:
         boss.world_pos[0] = max(-_bound_hw, min(_bound_hw, boss.world_pos[0]))
         boss.world_pos[2] = max(-_bound_hd, min(_bound_hd, boss.world_pos[2]))
 
+        # ── Colisão com objetos do cenário (pilar, plataformas laterais,
+        # plataforma da Emilia, etc.) — mesma física aplicada ao player,
+        # pra ele parar de atravessar esses objetos. ──
+        for _hitbox in self.floor_state.obstacles:
+            _hitbox.resolve_player_collision(boss)
+
         # ── Fase 3+: flee — mantém distância do player ──
         _boss_phase = getattr(boss, 'phase', 1)
         if _boss_phase >= 3 and not getattr(boss, '_dying', False):
@@ -3251,6 +3259,12 @@ class Game:
 
         # ── Buracos negros ──
         _bh_phase = getattr(boss, 'phase', 1)
+        if getattr(boss, '_enrage_cleanup_done', False):
+            # Depois que o enrage (fase 5) já terminou, NUNCA mais usa a
+            # cadência de fase 5 pro buraco negro, mesmo que boss.phase
+            # "reboteie" de volta pra 5 (ex: recalculado a partir do HP,
+            # que fica travado em 1 após o enrage). Trava no máximo fase 4.
+            _bh_phase = min(_bh_phase, 4)
         _enrage_active = getattr(boss, '_enrage_triggered', False) and not getattr(boss, '_enrage_cleanup_done', False)
         if _bh_phase >= 3 and not getattr(boss, '_dying', False) and not _enrage_active:
             import random as _rnd, math as _m2

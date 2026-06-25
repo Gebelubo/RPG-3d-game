@@ -3,17 +3,13 @@ import os
 import time
 import pygame
 
-
-# ── Prioridades de categoria ────────────────────────────────────────────────
-# Quanto MAIOR o número, mais "tem direito de cortar os outros".
-# marluxia (boss, prioridade MÁXIMA) > spell (magia do Subaru) >
-# voice (hit/punch/myname/etc.) > enemy (heartless/aerialknocker) > walk (loop)
-PRIORITY_MARLUXIA = 5
-PRIORITY_SPELL    = 4
-PRIORITY_VOICE    = 3
-PRIORITY_ENEMY    = 2
-PRIORITY_WALK     = 1
-PRIORITY_NONE     = 0   # não usado para sons com voz própria; mantido por compatibilidade
+PRIORITY_MARLUXIA_TOP = 5
+PRIORITY_SPELL        = 4
+PRIORITY_MARLUXIA     = 3
+PRIORITY_VOICE        = 2
+PRIORITY_ENEMY        = 2
+PRIORITY_WALK         = 1
+PRIORITY_NONE         = 0  
 
 
 class SoundEffect:
@@ -99,16 +95,17 @@ class ChannelManager:
     _initialized = False
     _channel_by_priority = {}  # priority -> pygame.mixer.Channel
 
-    MARLUXIA_CHANNEL_ID = 0
-    SPELL_CHANNEL_ID    = 1
-    VOICE_CHANNEL_ID    = 2
-    ENEMY_CHANNEL_ID     = 3
-    WALK_CHANNEL_ID      = 4
+    MARLUXIA_TOP_CHANNEL_ID = 0
+    SPELL_CHANNEL_ID        = 1
+    MARLUXIA_CHANNEL_ID     = 2
+    VOICE_CHANNEL_ID        = 3
+    ENEMY_CHANNEL_ID        = 4
+    WALK_CHANNEL_ID         = 5
 
     # Ordem de prioridade do maior pro menor — usada pra decidir quem corta quem.
     _PRIORITY_ORDER = (
-        PRIORITY_MARLUXIA, PRIORITY_SPELL, PRIORITY_VOICE,
-        PRIORITY_ENEMY, PRIORITY_WALK,
+        PRIORITY_MARLUXIA_TOP, PRIORITY_SPELL, PRIORITY_MARLUXIA,
+        PRIORITY_VOICE, PRIORITY_ENEMY, PRIORITY_WALK,
     )
 
     @classmethod
@@ -117,17 +114,18 @@ class ChannelManager:
             return
         # Garante que existem canais suficientes pra reservar os fixos
         # (não reduz o total já configurado, só garante o mínimo).
-        if pygame.mixer.get_num_channels() < 8:
-            pygame.mixer.set_num_channels(8)
+        if pygame.mixer.get_num_channels() < 10:
+            pygame.mixer.set_num_channels(10)
 
         cls._channel_by_priority = {
-            PRIORITY_MARLUXIA: pygame.mixer.Channel(cls.MARLUXIA_CHANNEL_ID),
-            PRIORITY_SPELL:    pygame.mixer.Channel(cls.SPELL_CHANNEL_ID),
-            PRIORITY_VOICE:    pygame.mixer.Channel(cls.VOICE_CHANNEL_ID),
-            PRIORITY_ENEMY:    pygame.mixer.Channel(cls.ENEMY_CHANNEL_ID),
-            PRIORITY_WALK:     pygame.mixer.Channel(cls.WALK_CHANNEL_ID),
+            PRIORITY_MARLUXIA_TOP: pygame.mixer.Channel(cls.MARLUXIA_TOP_CHANNEL_ID),
+            PRIORITY_SPELL:        pygame.mixer.Channel(cls.SPELL_CHANNEL_ID),
+            PRIORITY_MARLUXIA:     pygame.mixer.Channel(cls.MARLUXIA_CHANNEL_ID),
+            PRIORITY_VOICE:        pygame.mixer.Channel(cls.VOICE_CHANNEL_ID),
+            PRIORITY_ENEMY:        pygame.mixer.Channel(cls.ENEMY_CHANNEL_ID),
+            PRIORITY_WALK:         pygame.mixer.Channel(cls.WALK_CHANNEL_ID),
         }
-        # Esses 5 canais ficam reservados — o mixer nunca os usa
+        # Esses 6 canais ficam reservados — o mixer nunca os usa
         # automaticamente para sons "soltos" (sem prioridade), então eles
         # nunca são "roubados" por engano.
         try:
@@ -172,8 +170,9 @@ class Effects:
     def __init__(self):
         ChannelManager._ensure_init()
 
-        # Emilia
-        self.emilia_thankyou = SoundEffect('emilia_sfx/thankyou.mp3', priority=PRIORITY_VOICE)
+        # Emilia — fala dela fica no topo (mesmo nível das voicelines
+        # mais importantes do Marluxia).
+        self.emilia_thankyou = SoundEffect('emilia_sfx/thankyou.mp3', priority=PRIORITY_MARLUXIA_TOP)
 
         # Heartless / AerialKnocker — canal dedicado (PRIORITY_ENEMY) pra
         # garantir que sempre toquem, independente de quantos outros sons
@@ -184,35 +183,37 @@ class Effects:
         self.heartless_attack = SoundEffect('heartless_sfx/heartless_attack.mp3', priority=PRIORITY_ENEMY)
         self.heartless_death  = SoundEffect('heartless_sfx/heartless_death.mp3',  priority=PRIORITY_ENEMY)
 
-        # Marluxia — PRIORIDADE MÁXIMA (PRIORITY_MARLUXIA). É o boss único da
-        # torre: sua voz tem que ser sempre ouvida, cortando qualquer outra
-        # categoria (spell/voice/enemy/walk) se precisar. Cooldowns removidos:
-        # com canal dedicado garantido, o cooldown só fazia chamadas de
-        # .play() serem ignoradas em silêncio, principalmente nas fases 4/5
-        # onde os ataques disparam mais rápido (_atk_speed_mult alto).
-        self.marluxia_curse        = SoundEffect('marluxia_sfx/curse.mp3',         priority=PRIORITY_MARLUXIA)
+        # Marluxia — topo absoluto de prioridade: curse / death / fase4 / fase5.
+        # São os momentos mais importantes da luta (transições de fase e morte),
+        # então cortam tudo, inclusive as próprias magias do Subaru.
+        self.marluxia_curse        = SoundEffect('marluxia_sfx/curse.mp3',          priority=PRIORITY_MARLUXIA_TOP)
+        self.marluxia_death        = SoundEffect('marluxia_sfx/marluxia_death.mp3', priority=PRIORITY_MARLUXIA_TOP)
+        self.marluxia_fase4        = SoundEffect('marluxia_sfx/marluxia_fase4.mp3', priority=PRIORITY_MARLUXIA_TOP)
+        self.marluxia_fase5        = SoundEffect('marluxia_sfx/marluxia_fase5.mp3', priority=PRIORITY_MARLUXIA_TOP)
+
+        # Marluxia — ataques de combate "normais": ficam um nível abaixo das
+        # magias do Subaru (cedem pra elas), mas ainda acima da voz geral
+        # do Subaru/heartless/walk.
         self.marluxia_heavy_attack = SoundEffect('marluxia_sfx/heavy_attack.mp3',  priority=PRIORITY_MARLUXIA)
-        self.marluxia_death        = SoundEffect('marluxia_sfx/marluxia_death.mp3', priority=PRIORITY_MARLUXIA)
-        self.marluxia_fase4        = SoundEffect('marluxia_sfx/marluxia_fase4.mp3', priority=PRIORITY_MARLUXIA)
-        self.marluxia_fase5        = SoundEffect('marluxia_sfx/marluxia_fase5.mp3', priority=PRIORITY_MARLUXIA)
         self.marluxia_hit          = SoundEffect('marluxia_sfx/marluxia_hit.mp3',   priority=PRIORITY_MARLUXIA)
         self.marluxia_shoot        = SoundEffect('marluxia_sfx/marluxia_shoot.mp3', priority=PRIORITY_MARLUXIA)
         self.marluxia_normal_attack= SoundEffect('marluxia_sfx/normal_attack.mp3',  priority=PRIORITY_MARLUXIA)
         self.marluxia_round_attack = SoundEffect('marluxia_sfx/round_attack.mp3',   priority=PRIORITY_MARLUXIA)
         self.marluxia_taunt        = SoundEffect('marluxia_sfx/taunt.mp3',          priority=PRIORITY_MARLUXIA)
 
-        # Subaru — voz geral (hit/punch/myname/death/parry): prioridade VOICE
+        # Subaru — voz geral (hit/punch/myname/parry): prioridade VOICE
         self.subaru_hit      = SoundEffect('subaru_sfx/hit.wav',  cooldown=2.0, priority=PRIORITY_VOICE)
         self.subaru_myname   = SoundEffect('subaru_sfx/mynameisnatsukisubaru.mp3', priority=PRIORITY_VOICE)
         self.subaru_parry    = SoundEffect('subaru_sfx/parry.mp3', priority=PRIORITY_VOICE)
         self.subaru_punch    = SoundEffect('subaru_sfx/punch.wav', cooldown=0.5, priority=PRIORITY_VOICE)
-        self.subaru_death    = SoundEffect('subaru_sfx/subaru_death.mp3', priority=PRIORITY_VOICE)
 
-        # Subaru — voicelines de MAGIA: prioridade SPELL (alta, mas cede pro Marluxia)
+        # Subaru — voicelines de MAGIA + morte: prioridade SPELL (alta, só
+        # cede pro topo do Marluxia/Emilia).
         self.subaru_emt       = SoundEffect('subaru_sfx/subaru_EMT.mp3', priority=PRIORITY_SPELL)
         self.subaru_invisible = SoundEffect('subaru_sfx/subaru_invisibleprovidence.mp3', priority=PRIORITY_SPELL)
         self.subaru_minya     = SoundEffect('subaru_sfx/subaru_minya.mp3', priority=PRIORITY_SPELL)
         self.subaru_shamac    = SoundEffect('subaru_sfx/subaru_shamac.mp3', priority=PRIORITY_SPELL)
+        self.subaru_death     = SoundEffect('subaru_sfx/subaru_death.mp3', priority=PRIORITY_SPELL)
 
         # Subaru — passos: prioridade WALK (a mais baixa, cede pra tudo)
         self.subaru_walk = SoundEffect('subaru_sfx/walk.wav', priority=PRIORITY_WALK)
