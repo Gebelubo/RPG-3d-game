@@ -2885,7 +2885,6 @@ class Game:
             if hasattr(boss, 'invincible_timer'):
                 boss.invincible_timer = 10.0
             self.hud.add_popup("ENRAGE!", 3.0, (255, 0, 80))
-            self.hud.add_popup("Marluxia está invencível!", 2.5, (255, 80, 80))
 
         if getattr(boss, '_enrage_timer', 0.0) > 0.0:
             boss._enrage_timer -= dt
@@ -2910,7 +2909,6 @@ class Game:
                 for _cd_attr in ('_bh_cd', '_blackhole_cd', 'bh_cooldown', '_attack_cd', '_cd'):
                     if hasattr(boss, _cd_attr):
                         setattr(boss, _cd_attr, 0.0)
-                self.hud.add_popup("Marluxia pode ser atacado!", 2.0, (180, 255, 180))
 
         # Fases 3/4/5: spawna buracos negros com frequência crescente
         _bh_phase = getattr(boss, 'phase', 1)
@@ -3062,7 +3060,6 @@ class Game:
         self._curse_timer  = 30.0
         self._curse_active = True
         self.hud.add_popup("MALDIÇÃO!", 3.0, (180, 0, 255))
-        self.hud.add_popup("Controles invertidos por 30s!", 2.5, (200, 100, 255))
 
     def _update_curse_effect(self, dt):
         timer = getattr(self, "_curse_timer", 0.0)
