@@ -1465,6 +1465,13 @@ class Game:
     def _player_melee_attack(self):
         self._suppress_walk_sound = True
         self.sounds.subaru_walk.stop()
+
+        if self.current_floor == self.FLOOR_BOSS:
+            boss = getattr(self.floor_state, 'boss', None)
+            if boss is not None and getattr(boss, '_dying', False):
+                self.hud.add_popup("O boss já está derrotado!", 1.0, (255, 200, 100))
+                return
+
         self.sounds.subaru_punch.play()
 
         p = self.player
@@ -2107,6 +2114,15 @@ class Game:
     def _cast_spell(self, spell_id):
         sp = SPELL_DB.get(spell_id)
         if not sp: return
+
+        if self.current_floor == self.FLOOR_BOSS:
+            boss = getattr(self.floor_state, 'boss', None)
+            if boss is not None and not boss.dead:
+                phase = getattr(boss, 'phase', 1)
+                if phase >= 2:
+                    self.hud.add_popup("Magias bloqueadas na fase 2!", 1.5, (255, 100, 100))
+                    return
+
         self._suppress_walk_sound = True
         self.sounds.subaru_walk.stop()
         if spell_id == "invisible_providence":
@@ -2838,8 +2854,8 @@ class Game:
                     self.sounds.subaru_parry.play()
                     self.player.attack_cd = 0.0
         
-        if not parried_any:
-            self.hud.add_popup("Sem janela de parry!", 0.5, (255, 100, 100))
+        #if not parried_any:
+            #self.hud.add_popup("Sem janela de parry!", 0.5, (255, 100, 100))
             
         if not parried_any:
             # Verifica se algum inimigo está em wind-up mas a janela fechou
