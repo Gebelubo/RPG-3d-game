@@ -1,5 +1,5 @@
 """
-camera.py  –  Third-person camera (orbit around player).
+camera.py  –  Third-person camera (orbit around player) with smooth collision.
 """
 import math
 import numpy as np
@@ -42,11 +42,11 @@ class Camera:
         target[1] += 1.4
         self.target_pos = target
 
-        # Distância máxima inicial (braço)
+        # 1. Distância máxima permitida pelo braço original
         max_d = self.arm_length
         ground_y = target[1] - 1.0
 
-        # 1. Ajuste pelo chão (se a câmera olha para baixo)
+        # Ajuste pelo chão (se a câmera olha para baixo)
         if self.front[1] > 1e-6:
             t_ground = (target[1] - ground_y) / self.front[1]
             if 0.1 < t_ground < max_d:
@@ -64,48 +64,54 @@ class Camera:
                 denom = np.dot(self.front, normal)
                 if abs(denom) < 1e-6:
                     continue  # paralelo
+                
                 # Distância do target ao plano ao longo da direção front
                 d_plane = np.dot(target - wp, normal) / denom
                 if d_plane > 0.1:
-                    # Offset para não encostar: thickness + raio do jogador, 
-                    # dividido por |denom| para converter para distância ao longo de front
+                    # Offset para não encostar
                     offset = (thickness + PLAYER_RADIUS) / abs(denom)
                     safe_d = d_plane - offset
                     if safe_d < max_d:
                         max_d = max(0.1, safe_d)
 
-        # Agora max_d é a distância máxima permitida (chão + paredes)
-
-        # 3. Bloqueadores esféricos (obstáculos) – busca a maior distância segura
-        desired_distance = max_d
+        # 3. Bloqueadores esféricos (Inimigos/Obstáculos)
+        # Cálculo geométrico exato para evitar trepidação (jitter)
+        raw_distance = max_d
         if blockers:
-            # Testa distâncias de 0.6 até max_d
-            start = min(0.6, max_d)
-            safe_d = start
-            # Queremos a MAIOR distância que não colide
-            for d in np.linspace(start, max_d, num=16):
-                cand = target - self.front * d
-                collision = False
-                for b in blockers:
-                    bp = np.array(b["pos"], dtype=np.float32)
-                    br = float(b.get("radius", 0.6))
-                    if np.linalg.norm(cand - bp) < br + 0.45:
-                        collision = True
-                        break
-                if not collision:
-                    safe_d = d  # mantém a última sem colisão (a maior)
-            desired_distance = safe_d
+            for b in blockers:
+                bp = np.array(b["pos"], dtype=np.float32)
+                br = float(b.get("radius", 0.6))
+                
+                # Vetor do jogador para o obstáculo
+                to_blocker = bp - target
+                # Projeção do obstáculo na linha de visão invertida da câmera
+                projection = np.dot(to_blocker, -self.front)
+                
+                if projection > 0:  # O obstáculo está atrás do jogador (na rota da câmera)
+                    # Distância perpendicular do centro da esfera até a linha da câmera
+                    perpendicular_dist = np.linalg.norm(to_blocker - (-self.front * projection))
+                    safety_margin = br + 0.45
+                    
+                    if perpendicular_dist < safety_margin:
+                        # Colisão matemática com a esfera
+                        collision_d = projection - math.sqrt(safety_margin**2 - perpendicular_dist**2)
+                        if 0.1 < collision_d < raw_distance:
+                            raw_distance = max(0.1, collision_d)
 
-        # Posição desejada final (já dentro dos limites)
-        desired_pos = target - self.front * desired_distance
+        # 4. Interpolação assimétrica da distância (Suavização anti-tontura)
+        if not hasattr(self, '_current_distance'):
+            self._current_distance = raw_distance
 
-        # 4. Suavização (interpolação linear)
-        lerp_factor = 0.12
-        if hasattr(self, '_smooth_pos'):
-            self.pos = self._smooth_pos + (desired_pos - self._smooth_pos) * lerp_factor
+        # Se precisar encolher por colisão súbita, vai rápido. Se for esticar, vai macio.
+        if raw_distance < self._current_distance:
+            lerp_factor = 0.40  # Reação rápida para não clipar a geometria
         else:
-            self.pos = desired_pos
-        self._smooth_pos = self.pos.copy()
+            lerp_factor = 0.08  # Retorno lento para estabilizar a visão do jogador
+
+        self._current_distance += (raw_distance - self._current_distance) * lerp_factor
+
+        # Posição final baseada no braço suavizado
+        self.pos = target - self.front * self._current_distance
 
     def process_mouse(self, dx: float, dy: float):
         self.yaw   -= dx * self.mouse_sens
