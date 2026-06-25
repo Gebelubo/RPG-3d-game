@@ -16,7 +16,7 @@ STAIR_Z_SPACING = 1.0
 BEATRICE_Y_OFFSET = 0.5  # quanto a Beatrice fica acima do chão (ajuste de altura do modelo)
 SUBARU_Y_OFFSET    = 0.0  # quanto o modelo do Subaru fica acima do world_pos (chão lógico)
 HEARTLESS_Y_OFFSET = -0.5  # quanto o Heartless fica acima/abaixo do chão (negativo = mais baixo)
-AERIALKNOCKER_Y_OFFSET = 0.0  # quanto o AerialKnocker fica acima/abaixo do world_pos
+AERIALKNOCKER_Y_OFFSET = -0.8  # quanto o AerialKnocker fica acima/abaixo do world_pos
 
 
 SUBARU_TARGET_HEIGHT = 1.8

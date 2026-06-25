@@ -1327,7 +1327,7 @@ class Game:
 
     def _check_floor_progress(self):
         fs    = self.floor_state
-        alive = [e for e,n in fs.enemies if not e.dead]
+        alive = [e for e,n in fs.enemies if not e.dead and getattr(e, '_death_anim_timer', None) is None]
 
         if self.current_floor == self.FLOOR_ENTRY:
             if fs.barrier_active and not alive:
@@ -1459,7 +1459,8 @@ class Game:
             self.player_anim.play("punching", restart_if_same=True)
         hit = False
         for e, node in self.floor_state.enemies:
-            if e.dead: continue
+            # Pula inimigos mortos OU que já estão na animação de morte
+            if e.dead or getattr(e, '_death_anim_timer', None) is not None: continue
             dx = e.world_pos[0] - p.world_pos[0]
             dy = e.world_pos[1] - p.world_pos[1]
             dz = e.world_pos[2] - p.world_pos[2]
@@ -1495,20 +1496,17 @@ class Game:
                         e._dying       = True
                         e._death_timer = 3.0
                     else:
-                        # Toca animação de morte antes de sumir
+                        # Inicia animação de morte (se houver) e sempre usa timer
                         self.sounds.heartless_death.play()
                         anim_e = getattr(e, '_anim', None)
                         if anim_e is not None:
                             anim_e.play("death", restart_if_same=True)
                             e._anim_state = "death"
-                            e._death_anim_timer = 1.2
-                        else:
-                            e.dead = True; node.visible = False
-                            xp = e.stats.level * 20 + random.randint(5,15)
-                            leveled = p.stats.gain_xp(xp)
-                            self.hud.add_popup(f"+{xp} XP", 1.5, (230,200,80))
-                            if leveled: self.hud.add_popup("LEVEL UP!", 3.0, (255,230,50))
-                            self._check_floor_progress()
+                        # Timer sempre ativo — impede golpes extras e some só no fim
+                        e._death_anim_timer = 4.0
+                        if getattr(e, 'is_flying', False):
+                            e._death_fade = True   # AerialKnocker: fade out ao morrer
+                        node.visible = True
                 hit = True; break
         if self.current_floor == self.FLOOR_PUZZLE:
             self._try_activate_orb()
@@ -2105,7 +2103,7 @@ class Game:
         # ── Procura alvo mais próximo (pode não existir nenhum) ──────────────
         nearest = None; nearest_dist = 999.0
         for e, node in self.floor_state.enemies:
-            if e.dead: continue
+            if e.dead or getattr(e, '_death_anim_timer', None) is not None: continue
             dx = e.world_pos[0]-self.player.world_pos[0]; dz = e.world_pos[2]-self.player.world_pos[2]
             dist = math.sqrt(dx*dx+dz*dz)
             if dist < 8.0 and dist < nearest_dist:
@@ -2171,14 +2169,11 @@ class Game:
                 if anim_e is not None:
                     anim_e.play("death", restart_if_same=True)
                     e._anim_state = "death"
-                    e._death_anim_timer = 1.2
-                else:
-                    e.dead = True; node.visible = False
-                    xp = e.stats.level*20 + random.randint(5,15)
-                    leveled = self.player.stats.gain_xp(xp)
-                    self.hud.add_popup(f"+{xp} XP", 2.0, (230,200,80))
-                    if leveled: self.hud.add_popup("LEVEL UP!", 3.0, (255,230,50))
-                    self._check_floor_progress()
+                # Timer sempre ativo — impede golpes extras e some só no fim
+                e._death_anim_timer = 4.0
+                if getattr(e, 'is_flying', False):
+                    e._death_fade = True   # AerialKnocker: fade out ao morrer
+                node.visible = True
 
     def _use_item_explore(self, item_id):
         item = ITEM_DB.get(item_id)
@@ -2614,7 +2609,7 @@ class Game:
         PLAYER_RADIUS = 0.5; ENEMY_RADIUS = 0.6
         for e, node in self.floor_state.enemies:
 
-            if e.dead:
+            if e.dead or getattr(e, '_death_anim_timer', None) is not None:
                 continue
 
             dx = self.player.world_pos[0] - e.world_pos[0]
@@ -2836,12 +2831,42 @@ class Game:
                 if e._death_anim_timer <= 0.0:
                     e.dead = True
                     node.visible = False
+                    if hasattr(e, '_death_fade'):
+                        # Restaura cor original antes de sumir
+                        sm = getattr(e, '_skinned_mesh', None)
+                        if sm is not None and hasattr(e, '_death_fade_orig_color'):
+                            sm.base_color = e._death_fade_orig_color
+                        for prim in getattr(sm, '_primitives', []) if sm else []:
+                            if hasattr(prim, '_fade_orig_color'):
+                                prim.base_color = prim._fade_orig_color
+                                del prim._fade_orig_color
+                        del e._death_fade
+                    if hasattr(e, '_death_fade_orig_color'):
+                        del e._death_fade_orig_color
                     del e._death_anim_timer
                     xp = e.stats.level * 20 + random.randint(5,15)
                     leveled = self.player.stats.gain_xp(xp)
                     self.hud.add_popup(f"+{xp} XP", 1.5, (230,200,80))
                     if leveled: self.hud.add_popup("LEVEL UP!", 3.0, (255,230,50))
                     self._check_floor_progress()
+                else:
+                    # AerialKnocker: fade out escurecendo progressivamente nos últimos 1.5s
+                    if getattr(e, '_death_fade', False) and e._death_anim_timer < 1.5:
+                        fade_alpha = e._death_anim_timer / 1.5   # 1.0 → 0.0
+                        sm = getattr(e, '_skinned_mesh', None)
+                        if sm is not None:
+                            # Salva cor original uma vez
+                            if not hasattr(e, '_death_fade_orig_color'):
+                                e._death_fade_orig_color = tuple(getattr(sm, 'base_color', (1.0, 1.0, 1.0)))
+                            orig = e._death_fade_orig_color
+                            sm.base_color = (orig[0] * fade_alpha, orig[1] * fade_alpha, orig[2] * fade_alpha)
+                            # Aplica em todas as primitivas também
+                            for prim in getattr(sm, '_primitives', []):
+                                if not hasattr(prim, '_fade_orig_color'):
+                                    prim._fade_orig_color = tuple(getattr(prim, 'base_color', (1.0, 1.0, 1.0)))
+                                po = prim._fade_orig_color
+                                prim.base_color = (po[0] * fade_alpha, po[1] * fade_alpha, po[2] * fade_alpha)
+                    node.visible = True
                 continue
             
             if isinstance(e, Boss):
@@ -3024,7 +3049,7 @@ class Game:
 
         # ── COLISÃO ENTRE INIMIGOS ──
         ENEMY_RADIUS = 0.6
-        enemies = [e for e, node in self.floor_state.enemies if not e.dead]
+        enemies = [e for e, node in self.floor_state.enemies if not e.dead and getattr(e, '_death_anim_timer', None) is None]
         for i in range(len(enemies)):
             for j in range(i + 1, len(enemies)):
                 e1 = enemies[i]
@@ -3705,7 +3730,8 @@ class Game:
             anim         = getattr(e, '_anim', None)
             if skinned_mesh is None or anim is None:
                 continue
-            if not node.visible and not getattr(e, '_dying', False):
+            dying_anim = getattr(e, '_death_anim_timer', None) is not None
+            if not node.visible and not getattr(e, '_dying', False) and not dying_anim:
                 continue
             self._render_skinned(node, skinned_mesh, anim)
 
