@@ -385,7 +385,7 @@ class Helper:
                     node = SceneNode("heartless", mesh=em, position=list(adj_pos))
                 scene.add(node)
 
-        e = Enemy("Heartless", level=level, world_pos=list(pos), stationary=stationary)
+        e = Enemy("Heartless", level=level, world_pos=list(pos), stationary=stationary, can_windup=True)
         e.spawn_pos     = list(pos)
         e._skinned_mesh = skinned_mesh      # None se usou fallback .obj
         e._anim         = anim_controller   # None se usou fallback .obj

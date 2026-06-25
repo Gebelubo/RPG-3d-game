@@ -1932,6 +1932,8 @@ class Game:
                 if self.input.key_pressed(str(n)): self._handle_submenu_number(n)
             if self.input.key_pressed("e") or self.input.key_pressed("return"):
                 self._interact()
+            if self.input.key_pressed("f"):
+                self._attempt_parry()
 
         elif self.game_mode in ("menu", "combat"):
             self.menus.handle_input(self.input)
@@ -2703,63 +2705,240 @@ class Game:
                 pb["activated"]              = True  # marca como ativado para libertar o fragmento
                 #self.hud.add_popup("Botão ativado! Fragmento liberado!", 2.5, (180, 255, 120))
 
-    def _update_enemies(self, dt):
+    def _attempt_parry(self):
+        """Tenta fazer parry em todos os inimigos E no boss."""
+        parried_any = False
+        
+        # Verifica inimigos normais
         for e, node in self.floor_state.enemies:
-            if e.dead: continue
+            if e.dead:
+                continue
+            
+            if e.is_winding_up and e.parry_window_open:
+                if e.attempt_parry():
+                    parried_any = True
+                    self.hud.add_popup("PARRY!", 0.8, (0, 255, 255))
+                    if hasattr(self.sounds, 'parry_success'):
+                        self.sounds.parry_success.play()
+                    self.player.attack_cd = 0.0
+                    break
+        
+        # Verifica o boss (se existir)
+        if not parried_any:
+            boss = getattr(self.floor_state, 'boss', None)
+            if boss is not None and not boss.dead:
+                if boss.is_winding_up and boss.parry_window_open:
+                    boss.parry_successful = True
+                    boss.parry_window_open = False
+                    parried_any = True
+                    self.hud.add_popup("PARRY!", 1.0, (0, 255, 200))
+                    if hasattr(self.sounds, 'parry_success'):
+                        self.sounds.parry_success.play()
+                    self.player.attack_cd = 0.0
+        
+        if not parried_any:
+            self.hud.add_popup("Sem janela de parry!", 0.5, (255, 100, 100))
+            
+        if not parried_any:
+            # Verifica se algum inimigo está em wind-up mas a janela fechou
+            for e, node in self.floor_state.enemies:
+                if e.is_winding_up and not e.parry_window_open:
+                    self.hud.add_popup("Tarde demais!", 0.5, (255, 100, 100))
+                    break
+            else:
+                self.hud.add_popup("Sem ataque pesado!", 0.5, (255, 100, 100))
+
+    def _update_enemies(self, dt):
+        # Primeiro, pega a posição do player uma vez
+        player_pos = self.player.world_pos
+        
+        for e, node in self.floor_state.enemies:
+            if e.dead:
+                anim = getattr(e, '_anim', None)
+                if anim is not None:
+                    anim.update(dt)
+                continue
+            
             if isinstance(e, Boss):
                 self._update_boss(boss=e, node=node, dt=dt)
-                return 
+                continue
+            
+            e.update(player_pos, dt)
+            
             y_off = getattr(e, '_y_offset', 0.0)
             node.position = [e.world_pos[0], e.world_pos[1] + y_off, e.world_pos[2]]
             if not getattr(e, 'stationary', False):
                 node.rotation[1] = e.facing_deg
 
-            # Animação: avança o controller e escolhe idle vs walking
-            anim = getattr(e, '_anim', None)
-            if anim is not None:
-                is_moving = (not getattr(e, 'stationary', False)
-                             and getattr(e, 'aggro', False))
-                target_state = "walking" if is_moving else "idle"
-                current_state = getattr(e, '_anim_state', None)
+            # ── GERENCIADOR DE TIMERS DE ATAQUE ──
+            if e.is_attacking:
+                e.attack_timer -= dt
+                if e.attack_timer <= 0:
+                    e.finish_attack_animation()
+                    
+                    # Volta para idle
+                    anim = getattr(e, '_anim', None)
+                    if anim is not None:
+                        anim.play("idle")
+                        e._anim_state = "idle"
+                    continue
 
-                if current_state != target_state:
-                    e._anim_state = target_state
-                    anim.play(target_state)
-            if anim is not None:
-                anim.update(dt)
-
-            if e.aggro and self.player.invincible <= 0.0:
-                dx = e.world_pos[0]-self.player.world_pos[0]
-                dz = e.world_pos[2]-self.player.world_pos[2]
-                if math.sqrt(dx*dx+dz*dz) < e.attack_range:
-                    dmg = e.try_attack(self.player.stats)
-                    if dmg > 0:
+            # ── SISTEMA DE WIND-UP (ATAQUE PESADO) ──
+            if e.is_winding_up:
+                e.windup_timer -= dt
+                
+                # Atualiza o timer da janela de parry
+                if e.parry_window_open:
+                    e.parry_window_timer -= dt
+                    if e.parry_window_timer <= 0:
+                        e.parry_window_open = False
+                
+                # Pisca o inimigo durante o wind-up
+                if e.windup_timer > 0:
+                    blink_speed = 6 + (1 - e.windup_timer / e.heavy_attack_windup) * 12
+                    if int(e.windup_timer * blink_speed) % 2 == 0:
+                        node.visible = True
+                        # Muda a cor para vermelho/laranja
+                        if hasattr(node, 'mesh') and hasattr(node.mesh, 'base_color'):
+                            if not hasattr(e, '_windup_color_saved'):
+                                e._windup_color_saved = True
+                                e._windup_original_color = tuple(node.mesh.base_color)
+                            if int(e.windup_timer * 10) % 2 == 0:
+                                node.mesh.base_color = (1.0, 0.3, 0.1)
+                            else:
+                                node.mesh.base_color = (1.0, 0.6, 0.0)
+                    else:
+                        node.visible = False
+                else:
+                    node.visible = True
+                    # Restaura a cor original
+                    if hasattr(e, '_windup_original_color') and hasattr(node, 'mesh'):
+                        node.mesh.base_color = e._windup_original_color
+                        if hasattr(e, '_windup_color_saved'):
+                            delattr(e, '_windup_color_saved')
+                        if hasattr(e, '_windup_original_color'):
+                            delattr(e, '_windup_original_color')
+                
+                # Quando o wind-up termina, executa o ataque pesado
+                if e.windup_timer <= 0.0:
+                    was_parried = e.parry_successful
+                    
+                    dmg = e.execute_windup_attack(self.player.stats)
+                    
+                    if was_parried:
+                        # ✨ PARRY BEM SUCEDIDO! ✨
+                        self.hud.add_popup("PARRY PERFEITO!", 1.5, (0, 255, 200))
+                        if hasattr(self.sounds, 'parry_success'):
+                            self.sounds.parry_success.play()
+                        
+                        # Efeito visual do parry
+                        if hasattr(node, 'mesh') and hasattr(node.mesh, 'base_color'):
+                            e._original_color = tuple(node.mesh.base_color)
+                            node.mesh.base_color = (0.0, 1.0, 0.8)
+                            e._parry_color_timer = 0.3
+                        
+                        e._parry_flash_timer = 0.3
+                        node.visible = False
+                        
+                    elif dmg > 0:
+                        # Tomou dano do ataque pesado
                         self.sounds.hit_sfx.play()
-                        self.player.invincible = 0.5
+                        self.player.invincible = 0.8
                         self.player.is_taking_damage = True
                         self.player.reaction_timer = self.player.REACTION_TIME
-                        self.hud.add_popup(f"-{dmg} HP", 1.2, (255,80,80))
-                        if self.player.is_dead: self._trigger_death()
+                        self.hud.add_popup(f"-{dmg} HP (Pesado)", 1.5, (255, 50, 50))
+                        
+                        if self.player.is_dead:
+                            self._trigger_death()
+                continue
 
+            # ── ANIMAÇÃO (idle / walking) ──
+            if not e.is_attacking and not e.is_winding_up:
+                anim = getattr(e, '_anim', None)
+                if anim is not None:
+                    is_moving = (not getattr(e, 'stationary', False) and getattr(e, 'aggro', False))
+                    target_state = "walking" if is_moving else "idle"
+                    current_state = getattr(e, '_anim_state', None)
+                    if current_state != target_state:
+                        e._anim_state = target_state
+                        anim.play(target_state)
+                    anim.update(dt)
+
+            # ── AGRESSÃO E ATAQUE ──
+            if e.aggro and self.player.invincible <= 0.0:
+                dx = player_pos[0] - e.world_pos[0]
+                dz = player_pos[2] - e.world_pos[2]
+                dist = math.sqrt(dx*dx + dz*dz)
+                
+                if e.attack_cooldown <= 0.0 and not e.is_attacking and not e.is_winding_up:
+                    # Decide qual ataque usar
+                    use_heavy = random.random() < 0.2
+                    
+                    if use_heavy and dist <= e.heavy_attack_range:
+                        # Tenta ataque pesado (passa a posição do player)
+                        dmg = e.try_attack(self.player.stats, player_pos, "heavy")
+                        
+                        if e.is_winding_up:
+                            self.hud.add_popup("PARRY! (Pesado)", 0.8, (255, 215, 0))
+                            if hasattr(self.sounds, 'parry_warning'):
+                                self.sounds.parry_warning.play()
+                    
+                    else:
+                        # Tenta ataque leve (passa a posição do player)
+                        dmg = e.try_attack(self.player.stats, player_pos, "light")
+                        
+                        if dmg > 0:
+                            self.sounds.hit_sfx.play()
+                            self.player.stats.hp = max(0, self.player.stats.hp - dmg)
+                            self.player.invincible = 0.3
+                            self.player.is_taking_damage = True
+                            self.player.reaction_timer = self.player.REACTION_TIME
+                            self.hud.add_popup(f"-{dmg} HP (Leve)", 1.0, (255, 180, 80))
+                            
+                            if self.player.is_dead:
+                                self._trigger_death()
+
+        # ── RESTAURA EFEITOS VISUAIS ──
+        for e, node in self.floor_state.enemies:
+            # Restaura visibilidade após flash do parry
+            if hasattr(e, '_parry_flash_timer'):
+                e._parry_flash_timer -= dt
+                if e._parry_flash_timer <= 0:
+                    node.visible = True
+                    delattr(e, '_parry_flash_timer')
+            
+            # Restaura cor original após parry
+            if hasattr(e, '_parry_color_timer'):
+                e._parry_color_timer -= dt
+                if e._parry_color_timer <= 0:
+                    if hasattr(e, '_original_color') and hasattr(node, 'mesh'):
+                        node.mesh.base_color = e._original_color
+                        delattr(e, '_original_color')
+                        delattr(e, '_parry_color_timer')
+
+        # ── COLISÃO ENTRE INIMIGOS ──
         ENEMY_RADIUS = 0.6
         enemies = [e for e, node in self.floor_state.enemies if not e.dead]
         for i in range(len(enemies)):
             for j in range(i + 1, len(enemies)):
-                e1 = enemies[i]; e2 = enemies[j]
-                dx = e1.world_pos[0]-e2.world_pos[0]; dz = e1.world_pos[2]-e2.world_pos[2]
-                dist2 = dx*dx+dz*dz; min_dist = ENEMY_RADIUS * 2
-                if dist2 < min_dist*min_dist and dist2 > 0.0001:
-                    dist = math.sqrt(dist2); push = (min_dist - dist) / dist * 0.5
-                    e1.world_pos[0] += dx*push; e1.world_pos[2] += dz*push
-                    e2.world_pos[0] -= dx*push; e2.world_pos[2] -= dz*push
+                e1 = enemies[i]
+                e2 = enemies[j]
+                dx = e1.world_pos[0] - e2.world_pos[0]
+                dz = e1.world_pos[2] - e2.world_pos[2]
+                dist2 = dx*dx + dz*dz
+                min_dist = ENEMY_RADIUS * 2
+                if dist2 < min_dist * min_dist and dist2 > 0.0001:
+                    dist = math.sqrt(dist2)
+                    push = (min_dist - dist) / dist * 0.5
+                    e1.world_pos[0] += dx * push
+                    e1.world_pos[2] += dz * push
+                    e2.world_pos[0] -= dx * push
+                    e2.world_pos[2] -= dz * push
 
     def _update_boss(self, boss, node, dt):
         if getattr(boss, '_dying', False):
-            # Toca animação de morte e aguarda timer antes da cutscene
             anim = getattr(boss, '_anim', None)
             if anim is not None:
-                # Garante que a animação de morte está tocando mesmo que
-                # não tenha sido iniciada antes de _dying ser setado.
                 if getattr(boss, '_anim_state', None) != "death":
                     boss._anim_state = "death"
                     anim.play("death")
@@ -2779,28 +2958,25 @@ class Game:
 
         boss.update(self.player.world_pos, dt)
 
-        # ── Fase 3+: flee — mantém distância do player ───────────────────
+        # ── Fase 3+: flee — mantém distância do player ──
         _boss_phase = getattr(boss, 'phase', 1)
         if _boss_phase >= 3 and not getattr(boss, '_dying', False):
             _px, _pz = self.player.world_pos[0], self.player.world_pos[2]
             _bx, _bz = boss.world_pos[0], boss.world_pos[2]
             _dx, _dz = _bx - _px, _bz - _pz
             _dist    = math.sqrt(_dx*_dx + _dz*_dz) or 1.0
-            _flee_min_dist = 5.5   # distância mínima que tenta manter
-            _flee_speed    = 3.5   # m/s
+            _flee_min_dist = 5.5
+            _flee_speed    = 3.5
             if _dist < _flee_min_dist:
-                # Move para longe do player
                 _nx, _nz = _dx / _dist, _dz / _dist
                 _new_bx  = _bx + _nx * _flee_speed * dt
                 _new_bz  = _bz + _nz * _flee_speed * dt
-                # Clamp nas paredes da arena
                 _hw = ROOM_W / 2 - 1.2
                 _hd = ROOM_D / 2 - 1.2
                 _new_bx = max(-_hw, min(_hw, _new_bx))
                 _new_bz = max(-_hd, min(_hd, _new_bz))
-                # Verifica se a nova posição é melhor (mais longe do player)
                 _new_dist = math.sqrt((_new_bx-_px)**2 + (_new_bz-_pz)**2)
-                if _new_dist > _dist - 0.01:  # só move se realmente recua
+                if _new_dist > _dist - 0.01:
                     boss.world_pos[0] = _new_bx
                     boss.world_pos[2] = _new_bz
 
@@ -2821,6 +2997,87 @@ class Game:
                 anim.play(target_state)
             anim.update(dt)
 
+        # ── SISTEMA DE WIND-UP DO BOSS (PARRY) ──
+        if boss.is_winding_up:
+            boss.windup_timer -= dt
+            
+            # Atualiza o timer da janela de parry
+            if boss.parry_window_open:
+                boss.parry_window_timer -= dt
+                if boss.parry_window_timer <= 0:
+                    boss.parry_window_open = False
+            
+            # Pisca o boss durante o wind-up
+            if boss.windup_timer > 0:
+                blink_speed = 6 + (1 - boss.windup_timer / boss.windup_duration) * 12
+                if int(boss.windup_timer * blink_speed) % 2 == 0:
+                    node.visible = True
+                    # Muda a cor para vermelho/laranja
+                    if hasattr(node, 'mesh') and hasattr(node.mesh, 'base_color'):
+                        if not hasattr(boss, '_windup_color_saved'):
+                            boss._windup_color_saved = True
+                            boss._windup_original_color = tuple(node.mesh.base_color)
+                        if int(boss.windup_timer * 10) % 2 == 0:
+                            node.mesh.base_color = (1.0, 0.3, 0.1)
+                        else:
+                            node.mesh.base_color = (1.0, 0.6, 0.0)
+                else:
+                    node.visible = False
+            else:
+                node.visible = True
+                # Restaura a cor original
+                if hasattr(boss, '_windup_original_color') and hasattr(node, 'mesh'):
+                    node.mesh.base_color = boss._windup_original_color
+                    if hasattr(boss, '_windup_color_saved'):
+                        delattr(boss, '_windup_color_saved')
+                    if hasattr(boss, '_windup_original_color'):
+                        delattr(boss, '_windup_original_color')
+            
+            # Quando o wind-up termina, executa o ataque
+            if boss.windup_timer <= 0.0:
+                was_parried = boss.parry_successful
+                
+                # Executa o ataque do boss
+                if was_parried:
+                    # ✨ PARRY BEM SUCEDIDO! ✨
+                    self.hud.add_popup("PARRY PERFEITO!", 1.5, (0, 255, 200))
+                    if hasattr(self.sounds, 'parry_success'):
+                        self.sounds.parry_success.play()
+                    
+                    # Efeito visual do parry
+                    if hasattr(node, 'mesh') and hasattr(node.mesh, 'base_color'):
+                        boss._original_color = tuple(node.mesh.base_color)
+                        node.mesh.base_color = (0.0, 1.0, 0.8)
+                        boss._parry_color_timer = 0.3
+                    
+                    boss._parry_flash_timer = 0.3
+                    node.visible = False
+                    
+                    # Reseta o estado do boss
+                    boss.is_winding_up = False
+                    boss.parry_successful = False
+                    boss.attack_cooldown = 1.0
+                    boss._finish_attack()
+                    
+                else:
+                    # Aplica o dano do ataque do boss
+                    dmg = boss._pending_damage
+                    boss._pending_damage = 0
+                    
+                    if dmg > 0:
+                        self.sounds.hit_sfx.play()
+                        self.player.invincible = 0.8
+                        self.player.is_taking_damage = True
+                        self.player.reaction_timer = self.player.REACTION_TIME
+                        self.hud.add_popup(f"💥 -{dmg} HP (Boss)", 1.5, (255, 50, 50))
+                        
+                        if self.player.is_dead:
+                            self._trigger_death()
+                    
+                    boss.is_winding_up = False
+                    boss._finish_attack()
+            return
+
         # ── Timer de animação: deixa o clipe tocar antes de aplicar hit ──
         _spd = getattr(boss, '_atk_speed_mult', 1.0)
         ANIM_HIT_DELAY = {
@@ -2832,11 +3089,11 @@ class Game:
             "taunt":        1.0  / _spd,
             "groundmagic":  0.8  / _spd,
         }
+        
         if boss.is_attacking:
             delay = ANIM_HIT_DELAY.get(boss.state, 0.5 / _spd)
             boss._atk_timer = getattr(boss, '_atk_timer', 0.0) + dt
             if boss._atk_timer < delay:
-                # ainda tocando animação — atualiza anim e volta
                 anim = getattr(boss, '_anim', None)
                 if anim is not None:
                     anim.update(dt)
@@ -2844,121 +3101,88 @@ class Game:
             boss._atk_timer = 0.0
         else:
             boss._atk_timer = 0.0
-        # ── Transições de fase ───────────────────────────────────────────────
-        # IMPORTANTE: boss.phase agora é controlado SOMENTE pelo enemy.py
-        # (MarluxiaBoss.update). Aqui só LEMOS boss.phase para disparar
-        # popups/efeitos colaterais — nunca escrevemos nela, senão voltamos
-        # a conflitar com os thresholds internos do enemy.py (curse parava
-        # de disparar pois o game_main já tinha avançado boss.phase antes).
-        hp_pct      = boss.stats.hp / max(1, boss.stats.max_hp)
-        _cur_phase  = getattr(boss, 'phase', 1)
+        
+        # ── Transições de fase ──
+        hp_pct = boss.stats.hp / max(1, boss.stats.max_hp)
+        _cur_phase = getattr(boss, 'phase', 1)
 
-        # Fase 2 – velocidade de ataque ×2 (acompanha o enemy.py: PHASE2_THRESH)
         if not getattr(boss, '_phase2_triggered', False) and _cur_phase >= 2 and not boss.dead:
             boss._phase2_triggered = True
-            boss._atk_speed_mult   = 2.0
+            boss._atk_speed_mult = 2.0
             self.hud.add_popup("FASE 2!", 2.5, (255, 160, 0))
 
-        # Fase 3 – curse + shoot habilitados (disparada pelo enemy.py)
         if not getattr(boss, '_phase3_triggered', False) and _cur_phase >= 3 and not boss.dead:
             boss._phase3_triggered = True
             self.hud.add_popup("FASE 3!", 2.5, (200, 80, 255))
 
-        # Fase 4 – fúria (2.5× velocidade de ataque, acompanha enemy.py: PHASE4_THRESH)
         if not getattr(boss, '_phase4_triggered', False) and _cur_phase >= 4 and not boss.dead:
             boss._phase4_triggered = True
-            boss._atk_speed_mult   = 2.5
+            boss._atk_speed_mult = 2.5
             self.hud.add_popup("FÚRIA!", 2.5, (255, 80, 0))
 
-        # Fase 5 – 1 HP: enrage (invencível 10s + buracos negros)
-        # Esta fase é exclusiva do game_main (enemy.py não conhece phase 5),
-        # então continua sendo controlada por HP direto — mas agora não
-        # conflita mais, pois o enemy.py nunca chega a usar o valor 5.
-        # IMPORTANTE: força a invencibilidade de 10s mesmo que o boss já
-        # esteja invencível por outro motivo (ex: fase 4 do enemy.py),
-        # garantindo que o enrage de 1 HP sempre tenha prioridade.
+        # ── Fase 5: Enrage ──
         if not getattr(boss, '_enrage_triggered', False) and boss.stats.hp <= 1 and not boss.dead:
             boss._enrage_triggered = True
-            boss.phase             = 5
-            boss._enrage_timer     = 10.0
+            boss.phase = 5
+            boss._enrage_timer = 10.0
             boss.invincible_active = True
             boss._enrage_bh_active = True
-            boss.stats.hp          = 1
-            # Mantém o invincible_timer do enemy.py "cheio" durante o enrage,
-            # para que o próprio enemy.py não zere invincible_active sozinho
-            # antes dos 10s do game_main terminarem.
+            boss.stats.hp = 1
             if hasattr(boss, 'invincible_timer'):
                 boss.invincible_timer = 10.0
             self.hud.add_popup("ENRAGE!", 3.0, (255, 0, 80))
 
         if getattr(boss, '_enrage_timer', 0.0) > 0.0:
             boss._enrage_timer -= dt
-            # Reforça a invencibilidade a cada frame enquanto o enrage da
-            # fase 5 estiver rodando, mesmo que o enemy.py tente desligá-la
-            # por conta própria (ex: invincible_timer da fase 4 zerando).
             boss.invincible_active = True
             if hasattr(boss, 'invincible_timer'):
                 boss.invincible_timer = max(boss.invincible_timer, boss._enrage_timer)
-
-            # ── Shoot periódico na fase 5 ─────────────────────────────────
+            
             boss._enrage_shoot_cd = getattr(boss, '_enrage_shoot_cd', 0.0) - dt
             if boss._enrage_shoot_cd <= 0.0:
                 self._spawn_shoot_projectile(boss)
-                boss._enrage_shoot_cd = 2.5   # dispara a cada 2.5s
+                boss._enrage_shoot_cd = 2.5
 
-        # IMPORTANTE: o cleanup fica FORA do bloco "> 0" para que seja
-        # executado no mesmo frame em que o timer cruza zero (após o -= dt
-        # acima fazer boss._enrage_timer ficar <= 0).
-        # Bug fix: removida a condição _enrage_bh_active daqui — se ela já
-        # fosse False por qualquer motivo, o cleanup nunca rodava e o boss
-        # ficava imortal para sempre. O cleanup deve disparar sempre que o
-        # timer expirar, independente do estado dos buracos negros.
         if getattr(boss, '_enrage_triggered', False) and getattr(boss, '_enrage_timer', 1.0) <= 0.0 \
                 and not getattr(boss, '_enrage_cleanup_done', False):
             boss._enrage_cleanup_done = True
-            boss._enrage_timer     = 0.0
+            boss._enrage_timer = 0.0
             boss.invincible_active = False
             boss._enrage_bh_active = False
             boss.phase = 4
             if hasattr(boss, 'invincible_timer'):
                 boss.invincible_timer = 0.0
-            # Bug fix: o enrage consumiu o checkpoint de 1 HP.
-            # Sem marcar _cp_1_done=True, o _clamp_boss_damage cai no bloco
-            # default e clampeia todo dano a max(0, hp-1) = 0 indefinidamente.
-            boss._cp_1_done  = True
+            boss._cp_1_done = True
             boss._cp_1_freeze = False
-            # Reativa a IA do boss
-            boss.aggro        = True
+            boss.aggro = True
             boss.is_attacking = False
-            boss._atk_timer   = 0.0
+            boss._atk_timer = 0.0
             boss._enrage_shoot_cd = 0.0
-            # Reseta cooldowns internos conhecidos
             for _cd_attr in ('_bh_cd', '_blackhole_cd', 'bh_cooldown', '_attack_cd', '_cd'):
                 if hasattr(boss, _cd_attr):
                     setattr(boss, _cd_attr, 0.0)
             self.hud.add_popup("FÚRIA ENCERRADA!", 2.5, (255, 160, 0))
 
-        # Fases 3/4/5: spawna buracos negros com frequência crescente
+        # ── Buracos negros ──
         _bh_phase = getattr(boss, 'phase', 1)
         if _bh_phase >= 3 and not getattr(boss, '_dying', False):
             import random as _rnd, math as _m2
-            # fase 3: 1 BH a cada 1.8s | fase 4: 2 a cada 1.0s | fase 5: 2 a cada 0.4s
-            _bh_cd   = {3: 1.8, 4: 1.0, 5: 0.25}.get(_bh_phase, 1.8)
-            _bh_qty  = {3: 1, 4: 2, 5: 3}.get(_bh_phase, 1)
+            _bh_cd = {3: 1.8, 4: 1.0, 5: 0.25}.get(_bh_phase, 1.8)
+            _bh_qty = {3: 1, 4: 2, 5: 3}.get(_bh_phase, 1)
             boss._enrage_bh_spawn_cd = getattr(boss, '_enrage_bh_spawn_cd', 0.0) - dt
             if boss._enrage_bh_spawn_cd <= 0.0:
                 boss._enrage_bh_spawn_cd = _bh_cd
                 bx_base, bz_base = boss.world_pos[0], boss.world_pos[2]
                 for _ in range(_bh_qty):
                     angle = _rnd.uniform(0, 2 * _m2.pi)
-                    dist  = _rnd.uniform(1.5, 5.0)
-                    bh_x  = bx_base + _m2.cos(angle) * dist
-                    bh_z  = bz_base + _m2.sin(angle) * dist
+                    dist = _rnd.uniform(1.5, 5.0)
+                    bh_x = bx_base + _m2.cos(angle) * dist
+                    bh_z = bz_base + _m2.sin(angle) * dist
                     if not hasattr(boss, 'blackholes'):
                         boss.blackholes = []
                     boss.blackholes.append({
-                        'pos':    (bh_x, bh_z),
-                        'timer':  3.5,
+                        'pos': (bh_x, bh_z),
+                        'timer': 3.5,
                         'radius': 1.2,
                         'damage': 12,
                     })
@@ -2971,38 +3195,82 @@ class Game:
         if boss.invincible_active:
             return
 
+        # ── ATAQUE DO BOSS COM WIND-UP ──
         if boss.aggro and self.player.invincible <= 0.0:
-            dx   = boss.world_pos[0] - self.player.world_pos[0]
-            dz   = boss.world_pos[2] - self.player.world_pos[2]
+            dx = boss.world_pos[0] - self.player.world_pos[0]
+            dz = boss.world_pos[2] - self.player.world_pos[2]
             dist = math.sqrt(dx * dx + dz * dz)
 
             atk_states = {"normalattack", "heavyattack", "roundattack", "shoot", "groundmagic"}
+            
+            # Verifica se o boss está atacando
             if boss.is_attacking and boss.state in atk_states:
+                # Se for shoot, executa imediatamente
                 if boss.state == "shoot":
                     self._spawn_shoot_projectile(boss)
                     boss._finish_attack()
                 else:
-                    attack_range = boss.attack_range
-                    if boss.current_attack:
-                        attack_range = boss.current_attack.get("range", attack_range)
-                    if dist < attack_range:
+                    # Verifica se o ataque atual deve ter wind-up
+                    # Ataques pesados e normais podem ter wind-up
+                    should_windup = boss.state in ("heavyattack", "normalattack") and not boss.is_winding_up
+                    
+                    if should_windup and dist < boss.attack_range:
+                        # INICIA O WIND-UP DO BOSS
+                        boss.is_winding_up = True
+                        boss.windup_timer = 0.5  # 500ms de windup
+                        boss.windup_duration = 0.5
+                        boss.parry_window_open = True
+                        boss.parry_successful = False
+                        boss.parry_window_timer = 0.5
+                        
+                        # Calcula o dano do ataque
+                        dmg = boss.try_attack(self.player.stats)
+                        boss._pending_damage = dmg if dmg > 0 else 0
+                        
+                        # Mostra aviso de parry
+                        self.hud.add_popup("PARRY!", 0.8, (255, 215, 0))
+                        if hasattr(self.sounds, 'parry_warning'):
+                            self.sounds.parry_warning.play()
+                        
+                        # Congela o boss durante o wind-up
+                        boss.is_attacking = False
+                        
+                    elif dist < boss.attack_range:
+                        # Ataque normal sem wind-up (para ataques rápidos como roundattack)
                         dmg = boss.try_attack(self.player.stats)
                         if dmg and dmg > 0:
                             self.sounds.hit_sfx.play()
-                            self.player.invincible       = 0.6
+                            self.player.invincible = 0.6
                             self.player.is_taking_damage = True
-                            self.player.reaction_timer   = self.player.REACTION_TIME
+                            self.player.reaction_timer = self.player.REACTION_TIME
                             self.hud.add_popup(f"-{dmg} HP", 1.2, (255, 80, 80))
                             if self.player.is_dead:
                                 self._trigger_death()
+                        boss._finish_attack()
                     else:
                         boss._finish_attack()
+                        
             elif boss.is_attacking and boss.state == "taunt":
                 boss.try_attack(self.player.stats)
             elif boss.is_attacking and boss.state == "curse":
                 self._apply_curse()
                 boss.try_attack(self.player.stats)
-                boss.is_attacking = False   # libera o boss após curse
+                boss.is_attacking = False
+
+        # Restaura efeitos visuais do parry
+        if hasattr(boss, '_parry_flash_timer'):
+            boss._parry_flash_timer -= dt
+            if boss._parry_flash_timer <= 0:
+                node.visible = True
+                delattr(boss, '_parry_flash_timer')
+        
+        if hasattr(boss, '_parry_color_timer'):
+            boss._parry_color_timer -= dt
+            if boss._parry_color_timer <= 0:
+                if hasattr(boss, '_original_color') and hasattr(node, 'mesh'):
+                    node.mesh.base_color = boss._original_color
+                    delattr(boss, '_original_color')
+                    delattr(boss, '_parry_color_timer')
 
         if boss.dead:
             anim = getattr(boss, "_anim", None)

@@ -6,15 +6,47 @@ import math
 from src.entities.stats import Stats
 
 class Enemy:
-    def __init__(self, name, level=1, world_pos=None, stationary: bool = False):
+    def __init__(self, name, level=1, world_pos=None, stationary: bool = False, can_windup: bool = False):
         hp = 40 + level * 15
         self.stats = Stats(name=name, level=level, max_hp=hp, hp=hp,
                            atk=6+level*2, defense=2, spd=8)
         self.world_pos = list(world_pos or [0,0,0])
-        self.aggro = False; self.aggro_range = 6.0; self.attack_range = 1.8
-        self.attack_cooldown = 0.0; self.dead = False; self.facing_deg = 0.0
+        self.aggro = False
+        self.aggro_range = 6.0
+        self.attack_range = 1.8
+        self.attack_cooldown = 0.0
+        self.dead = False
+        self.facing_deg = 0.0
         self.blind_time = 0.0
         self.stationary = stationary
+        
+        # ── Sistema de ataques ──
+        self.attack_type = "light"  # "light" ou "heavy"
+        self.light_attack_damage_mult = 1.0
+        self.heavy_attack_damage_mult = 2.5
+        self.light_attack_cooldown = 0.8
+        self.heavy_attack_cooldown = 2.5
+        self.heavy_attack_windup = 0.6
+        self.light_attack_range = 1.8
+        self.heavy_attack_range = 2.2
+        
+        # ── Sistema de wind-up ──
+        self.can_windup = can_windup
+        self.windup_duration = 0.6
+        self.windup_timer = 0.0
+        self.is_winding_up = False
+        self._windup_cooldown = 2.5
+        self._pending_damage = 0
+        
+        # ── Sistema de Parry ──
+        self.parry_window_open = False
+        self.parry_successful = False
+        self.parry_window_timer = 0.0
+        
+        # ── Controle de ataque ──
+        self.is_attacking = False
+        self.attack_timer = 0.0
+        self.current_attack_type = None
 
     def update(self, player_pos, dt):
         if self.dead: return
@@ -26,7 +58,7 @@ class Enemy:
         dx = player_pos[0] - self.world_pos[0]
         dz = player_pos[2] - self.world_pos[2]
         dist = math.sqrt(dx*dx + dz*dz)
-        # Stationary enemies do not move towards the player; they only attack when in range
+        
         if self.stationary:
             self.aggro = dist < self.aggro_range
             if dist > 0.001:
@@ -44,15 +76,178 @@ class Enemy:
                 self.world_pos[2] += (dz/dist)*spd
         self.attack_cooldown = max(0.0, self.attack_cooldown - dt)
 
-    def try_attack(self, player_stats) -> int:
-        if self.dead or self.attack_cooldown > 0: return 0
-        if getattr(player_stats, 'is_shielded', False):
-            self.attack_cooldown = 1.8
+    def try_attack(self, player_stats, player_pos, attack_type="light") -> int:
+        """
+        Tenta atacar com o tipo especificado.
+        player_pos: posição do player (lista [x, y, z])
+        attack_type: "light" ou "heavy"
+        Retorna o dano ou 0 se não atacou.
+        """
+        if self.dead or self.attack_cooldown > 0:
             return 0
-        self.attack_cooldown = 1.8
-        dmg = max(1, self.stats.atk + random.randint(-2,2) - player_stats.defense)
-        player_stats.hp = max(0, player_stats.hp - dmg)
+        
+        # Verifica se está em range para o tipo de ataque
+        dx = player_pos[0] - self.world_pos[0]
+        dz = player_pos[2] - self.world_pos[2]
+        dist = math.sqrt(dx*dx + dz*dz)
+        
+        if attack_type == "light" and dist > self.light_attack_range:
+            return 0
+        if attack_type == "heavy" and dist > self.heavy_attack_range:
+            return 0
+        
+        # ── ATAQUE LEVE (sem wind-up, sem parry) ──
+        if attack_type == "light":
+            self.current_attack_type = "light"
+            
+            # Dano reduzido
+            base_dmg = self.stats.atk
+            dmg = max(1, base_dmg + random.randint(-2, 2) - player_stats.defense)
+            dmg = int(dmg * self.light_attack_damage_mult)
+            
+            # Verifica escudo
+            if getattr(player_stats, 'is_shielded', False):
+                self.attack_cooldown = self.light_attack_cooldown
+                return 0
+            
+            self.attack_cooldown = self.light_attack_cooldown
+            self.is_attacking = True
+            self.attack_timer = 0.3
+            
+            # Toca animação de ataque leve
+            anim = getattr(self, '_anim', None)
+            if anim is not None:
+                anim.play("lightattack")
+                self._anim_state = "lightattack"
+            
+            return dmg
+        
+        # ── ATAQUE PESADO (com wind-up e parry) ──
+        elif attack_type == "heavy":
+            self.current_attack_type = "heavy"
+            
+            # Inicia wind-up se não estiver em andamento
+            if not self.is_winding_up:
+                self.is_winding_up = True
+                self.can_windup = True
+                self.windup_timer = self.heavy_attack_windup
+                self._windup_cooldown = self.heavy_attack_cooldown
+                self.attack_cooldown = 999.0
+                
+                # Abre a janela de parry
+                self.parry_window_open = True
+                self.parry_successful = False
+                self.parry_window_timer = self.heavy_attack_windup
+                
+                # Calcula o dano (alto)
+                base_dmg = self.stats.atk * 2
+                dmg = max(1, base_dmg + random.randint(-3, 3) - player_stats.defense)
+                dmg = int(dmg * self.heavy_attack_damage_mult)
+                self._pending_damage = dmg
+                
+                # Toca animação de windup
+                anim = getattr(self, '_anim', None)
+                if anim is not None:
+                    anim.play("heavywindup")
+                    self._anim_state = "heavywindup"
+                
+                return 0  # Ainda não causou dano
+            
+            return 0
+    
+    def execute_windup_attack(self, player_stats) -> int:
+        """Executa o ataque pesado após o wind-up terminar."""
+        if self.dead:
+            return 0
+        
+        # Fecha a janela de parry
+        self.parry_window_open = False
+        
+        # Se o parry foi bem sucedido, NÃO aplica dano
+        if self.parry_successful:
+            self._pending_damage = 0
+            self.parry_successful = False
+            self.is_winding_up = False
+            self.can_windup = False
+            self.attack_cooldown = self._windup_cooldown
+            self.is_attacking = True
+            self.attack_timer = 0.5
+            
+            # Toca animação de stun/parry
+            anim = getattr(self, '_anim', None)
+            if anim is not None:
+                anim.play("stun")
+                self._anim_state = "stun"
+            return 0
+        
+        # Aplica o dano
+        dmg = self._pending_damage
+        self._pending_damage = 0
+        
+        if dmg > 0:
+            player_stats.hp = max(0, player_stats.hp - dmg)
+        
+        # Toca animação de ataque pesado
+        anim = getattr(self, '_anim', None)
+        if anim is not None:
+            anim.play("heavyattack")
+            self._anim_state = "heavyattack"
+        
+        self.attack_cooldown = self._windup_cooldown
+        self.is_winding_up = False
+        self.can_windup = False
+        self.is_attacking = True
+        self.attack_timer = 0.6
+        
         return dmg
+    
+    def attempt_parry(self) -> bool:
+        """Tenta fazer parry. Retorna True se bem sucedido."""
+        if not self.parry_window_open:
+            return False
+        
+        self.parry_successful = True
+        self.parry_window_open = False
+        self.attack_cooldown = max(self.attack_cooldown, 0.5)
+        
+        return True
+    
+    def finish_attack_animation(self):
+        """Finaliza a animação de ataque."""
+        self.is_attacking = False
+        self.attack_timer = 0.0
+        self.current_attack_type = None
+    def update(self, player_pos, dt):
+        if self.dead: return
+        if self.blind_time > 0.0:
+            self.blind_time = max(0.0, self.blind_time - dt)
+            self.aggro = False
+            self.attack_cooldown = max(0.0, self.attack_cooldown - dt)
+            return
+        dx = player_pos[0] - self.world_pos[0]
+        dz = player_pos[2] - self.world_pos[2]
+        dist = math.sqrt(dx*dx + dz*dz)
+        
+        # Stationary enemies do not move towards the player
+        if self.stationary:
+            self.aggro = dist < self.aggro_range
+            if dist > 0.001:
+                self.facing_deg = math.degrees(math.atan2(dx, dz))
+            self.attack_cooldown = max(0.0, self.attack_cooldown - dt)
+            return
+
+        if dist < self.aggro_range:
+            self.aggro = True
+        if self.aggro and dist > 0.1:
+            self.facing_deg = math.degrees(math.atan2(dx, dz))
+            if dist > self.attack_range:
+                spd = 2.5 * dt
+                self.world_pos[0] += (dx/dist)*spd
+                self.world_pos[2] += (dz/dist)*spd
+        self.attack_cooldown = max(0.0, self.attack_cooldown - dt)
+
+
+    
 import math
 import random
 
@@ -126,6 +321,22 @@ class MarluxiaBoss(Enemy):
         self.blackhole_timer  = 0.0
         # Lista de dicts: {"pos": [x,z], "timer": float}  — consumida por game_main
         self.blackholes: list = []
+
+        self.can_windup = True  # Boss sempre pode ter wind-up
+        self.windup_duration = 0.6  # Duração do wind-up
+        self.windup_timer = 0.0
+        self.is_winding_up = False
+        self._windup_cooldown = 2.0
+        self._pending_damage = 0
+        
+        # ── Sistema de Parry ──
+        self.parry_window_open = False
+        self.parry_successful = False
+        self.parry_window_timer = 0.0
+        
+        # ── Controle de ataque ──
+        self.attack_timer = 0.0
+        self.current_attack_type = None
 
         # Padrões de ataque
         self.attack_patterns = {

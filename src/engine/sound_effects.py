@@ -34,3 +34,4 @@ class Effects:
         self.attack_sfx = SoundEffect('punch.wav')
         self.hit_sfx = SoundEffect('hit.wav')
         self.walk_sfx = SoundEffect('walk.wav')
+        self.parry_success = SoundEffect("parry.mp3")
