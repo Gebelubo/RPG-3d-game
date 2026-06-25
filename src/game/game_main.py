@@ -1515,11 +1515,20 @@ class Game:
                         # Inicia animação de morte (se houver) e sempre usa timer
                         self.sounds.heartless_death.play()
                         anim_e = getattr(e, '_anim', None)
+
                         if anim_e is not None:
-                            anim_e.play("death", restart_if_same=True)
+                            if fly:
+                                anim_e.play("idle", restart_if_same=True)
+                                node.rotation = (90, 87, 51)
+                                node.position[1] = 0.5
+                            else:
+                                anim_e.play("death", restart_if_same=True)
                             e._anim_state = "death"
-                        # Timer sempre ativo — impede golpes extras e some só no fim
-                        e._death_anim_timer = 4.0
+                        
+                        if fly:
+                            e._death_anim_timer = 2.0
+                        else:
+                            e._death_anim_timer = 4.0
                         if getattr(e, 'is_flying', False):
                             e._death_fade = True   # AerialKnocker: fade out ao morrer
                         node.visible = True
@@ -2182,11 +2191,20 @@ class Game:
             else:
                 self.sounds.heartless_death.play()
                 anim_e = getattr(e, '_anim', None)
+                fly     = getattr(e, 'is_flying', False)
                 if anim_e is not None:
-                    anim_e.play("death", restart_if_same=True)
+                    if fly:
+                        anim_e.play("idle", restart_if_same=True)
+                        node.rotation = (90, 87, 51)
+                        node.position[1] = 0.5
+                    else:
+                        anim_e.play("death", restart_if_same=True)
                     e._anim_state = "death"
-                # Timer sempre ativo — impede golpes extras e some só no fim
-                e._death_anim_timer = 4.0
+                
+                if fly:
+                    e._death_anim_timer = 2.0
+                else:
+                    e._death_anim_timer = 4.0
                 if getattr(e, 'is_flying', False):
                     e._death_fade = True   # AerialKnocker: fade out ao morrer
                 node.visible = True
