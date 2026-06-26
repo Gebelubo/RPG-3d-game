@@ -1358,6 +1358,7 @@ class Game:
         self._build_floor(floor)
         self.game_mode = "explore"; self.input.capture_mouse(True)
         self.hud.add_popup("Retorno da morte...", 3.0, (180,80,80))
+        pygame.mixer.music.play()
 
     # ── Floor progression ─────────────────────────────────────────────────────
 
@@ -4460,7 +4461,9 @@ class Game:
             return
 
         if self.game_mode == "death":
-            h.draw_death_screen(); return
+            h.draw_death_screen()
+            pygame.mixer.music.stop()
+            return
 
         # ── Barra de vida do boss (só na sala do boss) ──────────────────────
         if self.current_floor == self.FLOOR_BOSS:
