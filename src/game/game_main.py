@@ -1351,7 +1351,7 @@ class Game:
 
     def _respawn(self):
         self.player.stats.hp = self.player.stats.max_hp
-        self.player.stats.mp = self.player.stats.max_mp
+        #self.player.stats.mp = self.player.stats.max_mp
         self._helper.save_game(self.current_floor, self.player)
         saved_floor = self._helper.load_game(self.player)
         floor = saved_floor if saved_floor is not None else self.current_floor
@@ -2937,6 +2937,11 @@ class Game:
 
                 if dist >= 2.0:
                     continue
+                
+                if getattr(self.floor_state, 'in_parkour_room', False):
+                    if idx != 0:
+                        continue
+
 
                 self.notifications.append({
                     "text": "Pressione Z para coletar o fragmento",
