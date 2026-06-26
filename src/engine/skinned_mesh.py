@@ -12,22 +12,15 @@ from OpenGL.GL import (
 
 from .gltf_loader import SkinnedMeshData
 
-MAX_BONES = 100  # deve bater com `#define MAX_BONES 100` em skinned.vert
+MAX_BONES = 100  
 
 
 class SkinnedMesh:
-    """
-    Mesh com skinning. Uso:
-        smesh = SkinnedMesh(skinned_mesh_data)
-        ...
-        shader.use()
-        shader.set_mat4_array("uBoneMatrices", bone_matrices_list)  # ver shader.py
-        smesh.draw()
-    """
 
-    POS_NRM_UV_STRIDE = 8 * 4          # 32 bytes
-    JOINTS_STRIDE      = 4 * 2          # 8 bytes  (4 x uint16)
-    WEIGHTS_STRIDE     = 4 * 4          # 16 bytes (4 x float32)
+
+    POS_NRM_UV_STRIDE = 8 * 4         
+    JOINTS_STRIDE      = 4 * 2          
+    WEIGHTS_STRIDE     = 4 * 4          
 
     def __init__(self, mesh_data: SkinnedMeshData):
         self.name         = mesh_data.name
@@ -37,8 +30,7 @@ class SkinnedMesh:
         self.texture_path = mesh_data.texture_path
         self.base_color   = mesh_data.base_color
 
-        # Material defaults — mesmos campos que Mesh usa em scene.py:SceneNode.draw,
-        # para podermos reaproveitar uniforms de Phong sem mexer em scene.py.
+
         self.ka = 0.3
         self.kd = 0.8
         self.ks = 0.3
@@ -57,14 +49,12 @@ class SkinnedMesh:
 
         glBindVertexArray(self.vao)
 
-        # VBO 0: position/normal/uv (Estrutura Intercalada vinda do gltf_loader)
         glBindBuffer(GL_ARRAY_BUFFER, vbo_pos)
         glBufferData(GL_ARRAY_BUFFER, mesh_data.vertices.nbytes, mesh_data.vertices, GL_STATIC_DRAW)
         
-        # Correção: Forçando conversão para int puro antes do c_void_p para evitar ponteiros corrompidos
         offset_pos    = ctypes.c_void_p(0)
-        offset_normal = ctypes.c_void_p(int(3 * 4))  # 12 bytes
-        offset_uv     = ctypes.c_void_p(int(6 * 4))  # 24 bytes
+        offset_normal = ctypes.c_void_p(int(3 * 4))  
+        offset_uv     = ctypes.c_void_p(int(6 * 4))  
 
         glEnableVertexAttribArray(0)
         glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, self.POS_NRM_UV_STRIDE, offset_pos)
@@ -75,21 +65,18 @@ class SkinnedMesh:
         glEnableVertexAttribArray(2)
         glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, self.POS_NRM_UV_STRIDE, offset_uv)
 
-        # VBO 1: joints (location 3) — inteiros, usa glVertexAttribIPointer
         glBindBuffer(GL_ARRAY_BUFFER, vbo_joints)
         joints_data = mesh_data.joints.astype(np.uint16)
         glBufferData(GL_ARRAY_BUFFER, joints_data.nbytes, joints_data, GL_STATIC_DRAW)
         glEnableVertexAttribArray(3)
         glVertexAttribIPointer(3, 4, GL_UNSIGNED_SHORT, self.JOINTS_STRIDE, ctypes.c_void_p(0))
 
-        # VBO 2: weights (location 4)
         glBindBuffer(GL_ARRAY_BUFFER, vbo_weights)
         weights_data = mesh_data.weights.astype(np.float32)
         glBufferData(GL_ARRAY_BUFFER, weights_data.nbytes, weights_data, GL_STATIC_DRAW)
         glEnableVertexAttribArray(4)
         glVertexAttribPointer(4, 4, GL_FLOAT, GL_FALSE, self.WEIGHTS_STRIDE, ctypes.c_void_p(0))
 
-        # IBO
         glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ibo)
         glBufferData(GL_ELEMENT_ARRAY_BUFFER, mesh_data.indices.nbytes, mesh_data.indices, GL_STATIC_DRAW)
 

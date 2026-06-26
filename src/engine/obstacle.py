@@ -116,7 +116,6 @@ class BoxHitbox(Hitbox):
             return
 
         if dist2 < 1e-8:
-            # centro já está dentro do retângulo: empurra pela borda mais próxima
             dist_left  = px - left
             dist_right = right - px
             dist_front = pz - front

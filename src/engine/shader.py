@@ -22,7 +22,6 @@ class ShaderProgram:
         self.id = self._build(vert_path, frag_path)
         self._loc_cache: dict[str, int] = {}
 
-    # ── Build ─────────────────────────────────────────────────────────────────
 
     def _read(self, path: str) -> str:
         with open(path, "r") as f:
@@ -51,12 +50,10 @@ class ShaderProgram:
         glDeleteShader(fs)
         return prog
 
-    # ── Use ───────────────────────────────────────────────────────────────────
 
     def use(self):
         glUseProgram(self.id)
 
-    # ── Uniform helpers ───────────────────────────────────────────────────────
 
     def _loc(self, name: str) -> int:
         if name not in self._loc_cache:
@@ -71,7 +68,6 @@ class ShaderProgram:
 
     def set_vec3(self, name: str, x, y=None, z=None):
         if y is None:
-            # accept numpy array or list
             v = np.array(x, dtype=np.float32)
             glUniform3fv(self._loc(name), 1, v)
         else:
@@ -81,12 +77,10 @@ class ShaderProgram:
         glUniformMatrix4fv(self._loc(name), 1, False, mat.T.astype(np.float32))
 
     def set_mat4_array(self, name: str, mats: list):
-        """Sobe um array de mat4 (ex.: uBoneMatrices[100]) em uma única chamada.
-        'mats' é list[np.ndarray (4,4)]. Usado pelo skinning (engine/animation.py)."""
         if not mats:
             return
         count = len(mats)
-        flat = np.stack([m.T.astype(np.float32) for m in mats], axis=0)  # (count,4,4)
+        flat = np.stack([m.T.astype(np.float32) for m in mats], axis=0)  
         glUniformMatrix4fv(self._loc(name), count, False, flat)
 
     def set_mat3(self, name: str, mat: np.ndarray):

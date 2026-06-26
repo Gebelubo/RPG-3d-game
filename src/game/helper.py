@@ -159,11 +159,9 @@ class Helper:
 
 
     def _build_stairs(self, scene, floor_state):
-        """Escada sólida estilo castelo."""
 
         for i in range(STAIR_COUNT):
 
-            # altura acumulada do degrau
             height = (i + 1) * STAIR_STEP_H
 
             z_center = STAIR_Z_START - i * STAIR_Z_SPACING
@@ -219,7 +217,6 @@ class Helper:
             mesh = ProceduralMesh("obelisk", verts, idxs,
                                 base_color=(0.25, 0.20, 0.35),
                                 ka=0.3, kd=0.7, ks=0.4, shininess=32)
-            # Caminho corrigido: assets/models/tower/obsidian.png
             node_texture = Texture(f"{base_path}obsidian.png")
             
             node = SceneNode("obelisk", mesh=mesh, texture=node_texture,
@@ -235,7 +232,6 @@ class Helper:
                                 base_color=(0.15, 0.60, 0.55),
                                 ka=0.4, kd=0.6, ks=0.9, shininess=80)
             
-            # Caminho corrigido: assets/models/tower/rune_crystal.png
             node_texture = Texture(f"{base_path}rune_crystal.png")
             
             node = SceneNode("crystal", mesh=mesh, texture=node_texture,
@@ -288,7 +284,6 @@ class Helper:
                                 base_color=(0.30, 0.25, 0.40),
                                 ka=0.3, kd=0.7, ks=0.3, shininess=16)
             
-            # Caminho corrigido: assets/models/tower/tower_stone.png
             node_texture = Texture(f"{base_path}tower_stone.png")
             
             node = SceneNode("tower", mesh=mesh, texture=node_texture,
@@ -346,17 +341,14 @@ class Helper:
         anim_controller = None
 
         if flying:
-            # Tenta carregar AerialKnocker como skinned mesh animado
             ak_pos = (pos[0], pos[1] + AERIALKNOCKER_Y_OFFSET, pos[2])
             sk_node, skinned_mesh, anim_controller = self.load_skinned_aerialknocker(
                 position=ak_pos, rotation=(0, 180, 0)
             )
             if sk_node is not None:
-                # Skinned: posicionado diretamente pelo loader; não entra em scene.add()
-                # O render é feito por _render_enemy_skinned_meshes(), igual ao player.
+
                 node = sk_node
             else:
-                # Fallback: .obj estático
                 model_path  = os.path.join(_HERE, "assets", "models", "AerialKnocker", "AerialKnocker.obj")
                 model_scale = (scale[0] * 0.8, scale[1] * 0.8, scale[2] * 0.8)
                 node = self._load_obj_model(model_path, position=ak_pos, rotation=(0, 180, 0), scale=model_scale)
@@ -367,7 +359,6 @@ class Helper:
                     node = SceneNode("heartless", mesh=em, position=list(ak_pos))
                 scene.add(node)
         else:
-            # Tenta carregar Heartless terrestre como skinned mesh animado
             adj_pos = (pos[0], pos[1] + HEARTLESS_Y_OFFSET, pos[2])
             sk_node, skinned_mesh, anim_controller = self.load_skinned_heartless(
                 position=adj_pos, rotation=(0, 180, 0)
@@ -375,7 +366,6 @@ class Helper:
             if sk_node is not None:
                 node = sk_node
             else:
-                # Fallback: .obj estático
                 model_path  = os.path.join(_HERE, "assets", "models", "Heartless", "Heartless.obj")
                 node = self._load_obj_model(model_path, position=adj_pos, rotation=(180, 0, 0), scale=scale)
                 if node is None:
@@ -387,14 +377,13 @@ class Helper:
 
         e = Enemy("Heartless", level=level, world_pos=list(pos), stationary=stationary, can_windup=True)
         e.spawn_pos     = list(pos)
-        e._skinned_mesh = skinned_mesh      # None se usou fallback .obj
-        e._anim         = anim_controller   # None se usou fallback .obj
+        e._skinned_mesh = skinned_mesh      
+        e._anim         = anim_controller   
         e._anim_state   = None
         e._y_offset     = AERIALKNOCKER_Y_OFFSET if flying else HEARTLESS_Y_OFFSET
         return e, node
 
 
-    # ── Save / Load ───────────────────────────────────────────────────────────────
 
     def save_game(self, floor, player):
         data = {

@@ -27,7 +27,6 @@ class Player:
         self.facing_deg  = 0.0
         self.on_ground   = True
 
-        # States
         self.is_rolling    = False
         self.roll_timer    = 0.0
         self.roll_dir      = [0.0, 0.0]
@@ -38,10 +37,9 @@ class Player:
         self.combo_timer   = 0.0
         self.invincible    = 0.0  # i-frames
 
-        # Animação de reação a dano (Reaction clip)
         self.is_taking_damage = False
         self.reaction_timer   = 0.0
-        self.REACTION_TIME    = 0.5  # duração da animação de reação, em segundos
+        self.REACTION_TIME    = 0.5
 
     @property
     def is_dead(self): return not self.stats.is_alive()

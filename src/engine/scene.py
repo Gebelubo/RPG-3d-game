@@ -23,7 +23,6 @@ from .mesh   import Mesh
 from .texture import Texture
 
 
-# ─────────────────────────────────────────────────────────────────────────────
 
 class PointLight:
     def __init__(self,
@@ -34,12 +33,11 @@ class PointLight:
         self.color     = np.array(color, dtype=np.float32)
         self.intensity = intensity
 
-        # Optional orbit animation
         self.orbit      = True
         self.orbit_cx   = 0.0
         self.orbit_cz   = 0.0
         self.orbit_r    = 8.0
-        self.orbit_spd  = 0.5   # rad/sec
+        self.orbit_spd  = 0.5   
         self._orbit_t   = 0.0
 
     def update(self, dt: float):
@@ -54,7 +52,6 @@ class PointLight:
         shader.set_float("uLightIntensity",self.intensity)
 
 
-# ─────────────────────────────────────────────────────────────────────────────
 
 class SceneNode:
     def __init__(self,
@@ -65,7 +62,7 @@ class SceneNode:
                  rotation: tuple = (0, 0, 0),
                  scale:    tuple = (1, 1, 1),
                  visible:  bool  = True,
-                 transparent: bool = False):  # ← NOVO
+                 transparent: bool = False):  
 
         self.name     = name
         self.mesh     = mesh
@@ -74,12 +71,11 @@ class SceneNode:
         self.rotation = list(rotation)
         self.scale    = list(scale)
         self.visible  = visible
-        self.transparent = transparent  # ← NOVO
+        self.transparent = transparent  
 
         self.children: list["SceneNode"] = []
         self._animator = None
 
-    # ── Transform ─────────────────────────────────────────────────────────────
 
     def model_matrix(self, parent=None):
         T = translate(*self.position)
@@ -94,10 +90,8 @@ class SceneNode:
             return parent @ local
         return local
 
-    # ── Animation ─────────────────────────────────────────────────────────────
 
     def set_animator(self, fn):
-        """fn(node: SceneNode, dt: float)"""
         self._animator = fn
 
     def update(self, dt: float):
@@ -106,7 +100,6 @@ class SceneNode:
         for child in self.children:
             child.update(dt)
 
-    # ── Draw ──────────────────────────────────────────────────────────────────
 
     def draw(self, shader: ShaderProgram, parent_model: np.ndarray | None = None):
         if not self.visible:
@@ -123,7 +116,6 @@ class SceneNode:
                 shader.set_bool("uUseTexture", True)
                 shader.set_int("uTexture", 0)
                 
-                # ── HABILITA BLENDING SE TRANSPARENTE ──
                 if self.transparent:
                     from OpenGL.GL import glEnable, glBlendFunc, GL_BLEND, GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA
                     glEnable(GL_BLEND)
@@ -147,10 +139,8 @@ class SceneNode:
 
         for child in self.children:
             child.draw(shader, model)
-    # ── Cleanup ───────────────────────────────────────────────────────────────
 
     def cleanup(self):
-        """Libera recursivamente todos os recursos de GPU deste nó e filhos."""
         for child in self.children:
             child.cleanup()
         if self.mesh is not None:
@@ -161,7 +151,6 @@ class SceneNode:
             self.texture = None
 
 
-# ─────────────────────────────────────────────────────────────────────────────
 
 class Scene:
     def __init__(self):
@@ -182,7 +171,6 @@ class Scene:
             node.update(dt)
 
     def draw(self, shader: ShaderProgram, camera):
-        """Call once per frame with the Phong shader already in use."""
         shader.use()
         view  = camera.view_matrix()
         proj  = camera.projection_matrix(self._aspect)
@@ -195,7 +183,6 @@ class Scene:
             node.draw(shader)
 
     def cleanup(self):
-        """Destrói todos os recursos de GPU da cena. Chamar antes de descartar."""
         for node in self.nodes:
             node.cleanup()
         self.nodes.clear()

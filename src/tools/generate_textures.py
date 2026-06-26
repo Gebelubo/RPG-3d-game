@@ -2,12 +2,10 @@ from PIL import Image, ImageDraw, ImageFilter
 import os
 HERE = os.path.dirname(os.path.dirname(__file__))
 out = lambda p: os.path.join(HERE, 'assets', 'models') + p
-# ensure dirs
 os.makedirs(os.path.join(HERE, 'assets', 'models', 'Heartless'), exist_ok=True)
 os.makedirs(os.path.join(HERE, 'assets', 'models', 'tower'), exist_ok=True)
 os.makedirs(os.path.join(HERE, 'assets', 'models', 'Emilia'), exist_ok=True)
 
-# Heartless - radial smoky purple
 w=512
 img = Image.new('RGBA',(w,w),(0,0,0,0))
 d = ImageDraw.Draw(img)
@@ -25,7 +23,6 @@ img = img.filter(ImageFilter.GaussianBlur(2))
 img.save(os.path.join(HERE, 'assets', 'models', 'Heartless', 'heartless_diffuse.png'))
 print('wrote Heartless texture')
 
-# Tower stone - rough tile
 w=512
 img = Image.new('RGB',(w,w),(110,100,120))
 d = ImageDraw.Draw(img)
@@ -38,7 +35,6 @@ img.save(os.path.join(HERE, 'assets', 'models', 'tower', 'tower_stone.png'))
 img.save(os.path.join(HERE, 'assets', 'models', 'tower', 'platform_stone.png'))
 print('wrote tower textures')
 
-# Emilia diffuse - simple pastel fabric
 w=512
 img = Image.new('RGB',(w,w),(220,190,230))
 d = ImageDraw.Draw(img)

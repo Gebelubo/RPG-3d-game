@@ -31,11 +31,10 @@ class OBJLoader:
     def load(self, path: str) -> list[MeshData]:
         base_dir = os.path.dirname(os.path.abspath(path))
 
-        pos:    list[tuple] = []   # (x,y,z)
-        norms:  list[tuple] = []   # (nx,ny,nz)
-        uvs:    list[tuple] = []   # (u,v)
+        pos:    list[tuple] = []   
+        norms:  list[tuple] = []   
+        uvs:    list[tuple] = []   
 
-        # per-object accumulation
         groups:   list[dict]  = []
         cur_group: dict | None = None
         materials: dict[str, dict] = {}
@@ -69,7 +68,6 @@ class OBJLoader:
 
                 elif tok in ("o", "g"):
                     name = parts[1] if len(parts) > 1 else tok
-                    # only create a new group when it would be non-empty
                     if cur_group and cur_group["faces"]:
                         new_group(name)
                     else:
@@ -78,7 +76,6 @@ class OBJLoader:
                 elif tok == "usemtl":
                     mat_name = parts[1] if len(parts) > 1 else ""
                     if cur_group["faces"]:
-                        # split current group at material boundary
                         new_group(cur_group["name"])
                     cur_group["material"] = mat_name
 
@@ -90,18 +87,15 @@ class OBJLoader:
 
                 elif tok == "f":
                     verts = parts[1:]
-                    # fan-triangulate (works for convex polygons)
                     indices = [self._parse_face_vert(v) for v in verts]
                     for i in range(1, len(indices) - 1):
                         cur_group["faces"].append((indices[0], indices[i], indices[i+1]))
 
-        # ── Build MeshData per group ──────────────────────────────────────────
         result = []
         for g in groups:
             if not g["faces"]:
                 continue
             md = self._build_mesh(g, pos, norms, uvs)
-            # attach material
             mat_name = g["material"]
             md.material = mat_name
             if mat_name and mat_name in materials:
@@ -118,10 +112,8 @@ class OBJLoader:
 
         return result if result else []
 
-    # ── Helpers ───────────────────────────────────────────────────────────────
 
     def _parse_face_vert(self, token: str) -> tuple:
-        """'v/vt/vn' → (vi, ti, ni)  (0-based, -1 = absent)"""
         parts = token.split("/")
         def idx(s):
             return int(s) - 1 if s else -1
@@ -131,10 +123,6 @@ class OBJLoader:
         return (vi, ti, ni)
 
     def _build_mesh(self, group: dict, pos, norms, uvs) -> MeshData:
-        """
-        Convert raw face data into an indexed triangle list.
-        Each unique (v/vt/vn) combination → one vertex in the VBO.
-        """
         vertex_map: dict[tuple, int] = {}
         vbo_data:   list[float]      = []
         ibo_data:   list[int]        = []
@@ -150,7 +138,7 @@ class OBJLoader:
             if ni >= 0 and ni < len(norms):
                 nx, ny, nz = norms[ni]
             else:
-                nx, ny, nz = 0.0, 1.0, 0.0   # default up-normal
+                nx, ny, nz = 0.0, 1.0, 0.0  
             if ti >= 0 and ti < len(uvs):
                 u, v = uvs[ti]
             else:
@@ -166,16 +154,13 @@ class OBJLoader:
         vertices = np.array(vbo_data, dtype=np.float32).reshape(-1, 8)
         indices  = np.array(ibo_data,  dtype=np.uint32)
 
-        # OBJ files are typically Z-up; engine uses Y-up.
         self._convert_zup_to_yup(vertices)
 
-        # ── Compute flat normals if none supplied ─────────────────────────────
         if not norms:
             self._compute_normals(vertices, indices)
         return MeshData(name=group["name"], vertices=vertices, indices=indices)
 
     def _convert_zup_to_yup(self, vertices: np.ndarray):
-        """Remap OBJ Z-up coordinates to engine Y-up (rotate -90° around X)."""
         x, y, z = vertices[:, 0].copy(), vertices[:, 1].copy(), vertices[:, 2].copy()
         vertices[:, 0] = x
         vertices[:, 1] = z
@@ -187,7 +172,6 @@ class OBJLoader:
         vertices[:, 5] = -ny
 
     def _compute_normals(self, vertices: np.ndarray, indices: np.ndarray):
-        """Fill normals column (3:6) using face cross products."""
         positions = vertices[:, :3]
         normals   = np.zeros_like(positions)
 
@@ -226,7 +210,7 @@ class OBJLoader:
                     continue
 
                 elif tok == "Ka":
-                    cur["Ka_s"] = float(parts[1])   # use red channel as ambient scalar
+                    cur["Ka_s"] = float(parts[1])   
 
                 elif tok == "Kd":
                     cur["Kd"] = (float(parts[1]), float(parts[2]), float(parts[3]))
@@ -243,9 +227,6 @@ class OBJLoader:
                     tex_path = os.path.join(base_dir, tex_file)
                     cur["map_Kd"] = tex_path if os.path.isfile(tex_path) else None
 
-        # Provide a sensible fallback: if the material did not specify a texture,
-        # attempt to find a common diffuse file in the same folder using naming
-        # conventions (e.g. <objbasename>_diffuse.png, diffuse.png, <mtlname>.png)
         base_name = os.path.splitext(os.path.basename(path))[0]
         candidates = [f"{base_name}_diffuse.png", f"{base_name}.png", "diffuse.png"]
         files_in_dir = {os.path.basename(p): p for p in [os.path.join(base_dir, f) for f in os.listdir(base_dir)]}
@@ -253,11 +234,9 @@ class OBJLoader:
         for name, mat in materials.items():
             if mat.get("map_Kd"):
                 continue
-            # try material-named texture first
             mtex = f"{name}.png"
             if mtex in files_in_dir:
                 mat["map_Kd"] = files_in_dir[mtex]; continue
-            # try candidates
             for c in candidates:
                 if c in files_in_dir:
                     mat["map_Kd"] = files_in_dir[c]; break

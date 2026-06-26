@@ -16,7 +16,6 @@ from OpenGL.GL import (
 )
 
 
-# ── Font cache ────────────────────────────────────────────────────────────────
 
 
 _FONT_CACHE: dict = {}
@@ -35,9 +34,6 @@ def _get_font(size, bold=False):
     return _FONT_CACHE[key]
 
 
-# ── Texture cache — key -> (tex_id, w, h) ─────────────────────────────────────
-# Texturas são objetos de GPU; mantemos no máximo _TEX_CACHE_MAX entradas e
-# descartamos as mais antigas quando o limite é atingido (FIFO simples).
 
 _TEX_CACHE: dict = {}        # key -> (tex_id, w, h)
 _TEX_ORDER: list = []        # ordem de inserção para descarte
@@ -45,7 +41,6 @@ _TEX_CACHE_MAX = 256
 
 
 def _upload_surface(surf) -> tuple:
-    """Envia uma pygame.Surface (RGBA) para a GPU e retorna (tex_id, w, h)."""
     surf = surf.convert_alpha()
     w, h = surf.get_size()
     data = pygame.image.tostring(surf, "RGBA", True)
@@ -76,11 +71,7 @@ def _cache_store(key, tex, w, h):
 def _text_tex(text: str, size: int, color=(255, 255, 255), bold=False,
               outline: bool = True, outline_color=(35, 20, 10),
               shadow: bool = False, shadow_color=(0, 0, 0), shadow_offset=(2, 2)):
-    """
-    Renderiza texto para uma textura, com contorno opcional (efeito "gravado",
-    ideal para estética medieval/fantasia — melhora a legibilidade sobre
-    pergaminho, madeira ou metal) e sombra projetada opcional (bom para títulos).
-    """
+
     key = (text, size, color, bold, outline, outline_color, shadow, shadow_color, shadow_offset)
     if key in _TEX_CACHE:
         return _TEX_CACHE[key]
@@ -117,7 +108,6 @@ def _text_tex(text: str, size: int, color=(255, 255, 255), bold=False,
     return tex, w, h
 
 
-# ── Quad helpers ──────────────────────────────────────────────────────────────
 
 def _make_quad(x, y, w, h):
     """Cria um VAO para um quad 2-D. Caller é responsável por deletar."""
@@ -145,12 +135,7 @@ def _make_quad(x, y, w, h):
 
 
 def _make_poly(points):
-    """
-    Cria um VAO para um polígono convexo preenchido (leque de triângulos a
-    partir do primeiro ponto). Usado para gemas, rebites, medalhões e faixas
-    decorativas — formas que um quad simples não cobre.
-    Retorna (vao, vbo, ibo, n_indices).
-    """
+
     n = len(points)
     verts = []
     for (x, y) in points:
@@ -179,7 +164,6 @@ def _make_poly(points):
 
 
 def _ngon_points(cx, cy, r, sides=8, rotation=0.0, ry=None):
-    """Gera os pontos de um polígono regular (diamante, octógono, "círculo")."""
     ry = r if ry is None else ry
     pts = []
     for i in range(sides):
@@ -189,10 +173,7 @@ def _ngon_points(cx, cy, r, sides=8, rotation=0.0, ry=None):
 
 
 def _banner_points(x, y, w, h, notch=12):
-    """
-    Gera os pontos de uma faixa/estandarte com pontas em V — usado como
-    moldura de título nos painéis (visual de bandeira/pergaminho heráldico).
-    """
+
     return [
         (x - notch, y + h / 2),
         (x, y),
@@ -204,17 +185,12 @@ def _banner_points(x, y, w, h, notch=12):
 
 
 def _free_quad(vao, vbo, ibo):
-    """Libera um VAO/VBO/IBO. Funciona tanto para quads quanto para polígonos."""
     glDeleteVertexArrays(1, [vao])
     glDeleteBuffers(2, [vbo, ibo])
 
 
 def clear_text_cache():
-    """
-    Libera todas as texturas de texto em cache. Chamar ao fechar o jogo.
-    (As variáveis de cache vivem neste módulo, então a limpeza precisa
-    acontecer aqui — chamada via HUD.cleanup()).
-    """
+
     global _TEX_CACHE, _TEX_ORDER
     for tex, _, _ in _TEX_CACHE.values():
         glDeleteTextures(1, [tex])

@@ -31,7 +31,6 @@ class Character:
         self.auto_play = auto_play
 
         self.cache = {}
-    # --------------------------------------------------
 
     def _load_smd(self):
 
@@ -82,7 +81,6 @@ class Character:
 
         return self.cache[cache_key]
 
-    # --------------------------------------------------
 
     def _create_animation_controller(self, smd):
 
@@ -100,7 +98,6 @@ class Character:
 
         return controller
 
-    # --------------------------------------------------
 
     def _calculate_auto_scale(
         self,
@@ -162,7 +159,6 @@ class Character:
 
         return auto_scale
 
-    # --------------------------------------------------
 
     def _get_scale(
         self,
@@ -181,7 +177,6 @@ class Character:
 
         return 1.0
 
-    # --------------------------------------------------
 
     def _load_texture(self, smd):
 
@@ -198,7 +193,6 @@ class Character:
             )
             return None
 
-    # --------------------------------------------------
 
     def load_skinned(
         self,
@@ -271,7 +265,6 @@ class MultiClipCharacter(Character):
         self.files = files
         self.primary_clip = primary_clip
 
-    # --------------------------------------------------
 
     def _load_smd(self):
 

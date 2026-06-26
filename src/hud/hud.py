@@ -22,9 +22,6 @@ from src.hud.utils import (
 )
 
 
-# ── Paleta medieval ────────────────────────────────────────────────────────
-# Cores "fonte" em 0-255 (usadas em texto / definição de tema).
-# Versões "_F" já convertidas para 0-1 (usadas direto no shader uBaseColor).
 
 def _c(rgb):
     """Converte (R, G, B) 0-255 para floats 0-1 usados pelo shader."""
@@ -81,7 +78,7 @@ class HUD:
         self.item_menu_open  = False
         self.skill_menu_open = False
         self.inventory_items = []
-        self.popups: list = []   # [text, timer, color, y_offset]
+        self.popups: list = []   
 
     def resize(self, w, h):
         self.sw = w
@@ -94,7 +91,6 @@ class HUD:
     def update(self, dt: float):
         self.popups = [[t, ti - dt, c, yo] for t, ti, c, yo in self.popups if ti - dt > 0]
 
-    # ── Shader setup ─────────────────────────────────────────────────────────
 
     def _setup(self, alpha: float = 1.0):
         self.shader.use()
@@ -103,15 +99,13 @@ class HUD:
         self.shader.set_mat4("uModel",      self.model)
         self.shader.set_float("uAlpha", alpha)
 
-    # ── Primitivas básicas ───────────────────────────────────────────────────
 
     def draw_text(self, text: str, x: int, y: int, size: int = 18,
                   color=(255, 255, 255), bold: bool = False, center: bool = False,
                   alpha: float = 1.0, outline: bool = True, shadow: bool = False):
         if not text:
             return
-        # Contorno escuro dá um efeito "gravado" — combina com pergaminho/metal
-        # e melhora a legibilidade sobre fundos texturizados.
+
         tex, tw, th = _text_tex(text, size, color, bold, outline=outline, shadow=shadow)
         if center:
             x = int(x - tw // 2)
@@ -131,7 +125,6 @@ class HUD:
         glBindTexture(GL_TEXTURE_2D, 0)
         glDisable(GL_BLEND)
         _free_quad(vao, vbo, ibo)
-        # textura fica no cache — NÃO deletar aqui
 
     def draw_rect(self, x: int, y: int, w: int, h: int,
                   color=(0.1, 0.1, 0.2), alpha: float = 1.0):
@@ -188,7 +181,6 @@ class HUD:
             _free_quad(vao, vbo, ibo)
         glDisable(GL_BLEND)
 
-    # ── Ornamentos ───────────────────────────────────────────────────────────
 
     def draw_gem(self, cx, cy, r, color, sides=4, rotation=math.pi / 4, highlight=True):
         """Gema/rebite decorativo — usado em cantos de painéis e pontas de barras."""
@@ -258,11 +250,9 @@ class HUD:
             glBindVertexArray(0)
             _free_quad(vao, vbo, ibo)
 
-        # moldura de ferro + friso de bronze
         _solid(x - 3, y - 3, w + 6, h + 6, IRON_DARK_F)
         _solid(x - 1, y - 1, w + 2, h + 2, BRONZE_F)
 
-        # fundo
         _solid(x, y, w, h, bg_color)
 
         fill = max(0.0, min(1.0, fill))
@@ -276,18 +266,15 @@ class HUD:
                 sy = y + (h * i) / steps
                 sh = h / steps + 1
                 _solid(x, sy, fw, sh, col)
-            # brilho (gloss) na faixa superior do preenchimento
             _solid(x, y, fw, max(1, int(h * 0.3)), _lighten(bar_color, 0.25))
 
         glDisable(GL_BLEND)
 
-        # tachas/rebites de bronze nas extremidades
         if w > 6:
             r = max(2.2, h * 0.32)
             self.draw_gem(x, y + h / 2, r, BRONZE_F, sides=8)
             self.draw_gem(x + w, y + h / 2, r, BRONZE_F, sides=8)
 
-    # ── HUD principal ────────────────────────────────────────────────────────
 
     def draw_main_hud(self, player, game_mode):
         sw, sh = self.sw, self.sh
@@ -299,28 +286,23 @@ class HUD:
                         bg_color=PARCHMENT_DK_F, border_color=GOLD_F,
                         border_dark=GOLD_DARK_F, thickness=3, gem_color=BRONZE_F)
 
-        # Medalhão de nível, no canto superior direito do painel
         lvl_cx = bx - 8 + panel_w - 24
         lvl_cy = by - 8 + 18
         self.draw_medallion(lvl_cx, lvl_cy, 15, AMETHYST_F)
         self.draw_text(f"{p.level}", lvl_cx, lvl_cy + 1, 15, (255, 235, 190), bold=True, center=True)
         self.draw_text("NV", lvl_cx, lvl_cy + 15, 9, (225, 205, 255), bold=True, center=True)
 
-        # Barra de HP
         self.draw_bar(bx, by + 14, 196, 16, p.hp / p.max_hp,
                       bar_color=(0.88, 0.16, 0.18), bg_color=(0.16, 0.04, 0.05))
         self.draw_text(f"HP  {p.hp}/{p.max_hp}", bx + 6, by + 15, 12, (255, 225, 215), bold=True)
 
-        # Barra de MP
         self.draw_bar(bx, by + 38, 196, 16, p.mp / max(1, p.max_mp),
                       bar_color=(0.22, 0.46, 0.95), bg_color=(0.05, 0.07, 0.20))
         self.draw_text(f"MP  {p.mp}/{p.max_mp}", bx + 6, by + 39, 12, (210, 225, 255), bold=True)
 
-        # Barra de XP
         self.draw_bar(bx, by + 60, 196, 10, p.xp / max(1, p.xp_next),
                       bar_color=(0.95, 0.78, 0.16), bg_color=(0.14, 0.11, 0.03))
 
-        # Indicador de escudo EMT
         if getattr(p, 'is_shielded', False):
             shield_left = int(max(0.0, p.shield_time) + 0.9)
             self.draw_gem(bx + 222, by + 45, 10, SAPPHIRE_F, sides=6)
@@ -337,7 +319,6 @@ class HUD:
         if self.skill_menu_open:
             self._draw_skill_submenu()
 
-        # Popups centralizados, com fade de opacidade e sombra para destaque
         for i, (text, timer, color, y_offset) in enumerate(reversed(self.popups)):
             fade = min(1.0, timer)
             self.draw_text(
@@ -347,7 +328,6 @@ class HUD:
                 center=True, alpha=fade, shadow=True,
             )
 
-    # ── Botões de ação ───────────────────────────────────────────────────────
 
     def _draw_action_menu(self):
         sh = self.sh
@@ -364,20 +344,16 @@ class HUD:
             xi = bx + i * (bs + pad)
             active = active_states[i]
 
-            # moldura de ferro + friso (dourado se o menu estiver aberto)
             self.draw_rect(xi - 3, by - 3, bs + 6, bs + 6, IRON_DARK_F)
             frame_col = GOLD_F if active else BRONZE_F
             self.draw_rect(xi - 1, by - 1, bs + 2, bs + 2, frame_col)
 
-            # fundo em gradiente
             self.draw_gradient_rect(xi, by, bs, bs, _lighten(col, 0.08), col_dk)
 
-            # emblema central
             self.draw_medallion(xi + bs / 2, by + 22, 14, col)
             self.draw_text(label, xi + bs / 2, by + 46, 11, (250, 235, 200),
                            bold=True, center=True)
 
-            # etiqueta com a tecla de atalho
             tag_w, tag_h = 22, 14
             tx = xi + bs / 2 - tag_w / 2
             ty = by + bs - tag_h - 3
@@ -386,7 +362,6 @@ class HUD:
             self.draw_text(key, xi + bs / 2, ty + tag_h / 2, 11, (230, 210, 130),
                            bold=True, center=True)
 
-    # ── Submenus ─────────────────────────────────────────────────────────────
 
     def _draw_spell_submenu(self):
         sh = self.sh
@@ -411,7 +386,6 @@ class HUD:
             self.draw_text(f"[{i + 1}]",       px + 210, iy + 8, 13, (230, 210, 130), bold=True)
 
     def _draw_item_submenu(self):
-        # Atualiza a lista de itens antes de desenhar
         self.inventory_items = self.player.inventory.list_consumables() if hasattr(self, 'player') else []
         
         sh = self.sh
@@ -462,7 +436,6 @@ class HUD:
             self.draw_text(name, px + 40, iy -2,  12, (255, 230, 150))
             self.draw_text(desc, px + 40, iy + 14, 10, (205, 185, 125))
 
-    # ── Telas especiais ───────────────────────────────────────────────────────
 
     def draw_combat_log(self, messages):
         if not messages:
@@ -502,7 +475,6 @@ class HUD:
         self.draw_text("[ESC] Continuar",      sw / 2, sh / 2 - 6, 15, (225, 225, 235), center=True)
         self.draw_text("[Q]   Voltar ao menu", sw / 2, sh / 2 + 24, 15, (225, 225, 235), center=True)
 
-    # ── Clique do mouse ───────────────────────────────────────────────────────
 
     def handle_click(self, mx, my, player):
         sh = self.sh; bs = 68; pad = 8
@@ -546,7 +518,6 @@ class HUD:
                     return f"item:{item.id}"
         return None
 
-    # ── Limpeza de recursos ───────────────────────────────────────────────────
 
     def cleanup(self):
         """Libera todas as texturas em cache. Chamar ao fechar o jogo."""
