@@ -24,8 +24,8 @@ class Enemy:
         self.attack_type = "light"  # "light" ou "heavy"
         self.light_attack_damage_mult = 1.0
         self.heavy_attack_damage_mult = 2.5
-        self.light_attack_cooldown = 0.8
-        self.heavy_attack_cooldown = 2.5
+        self.light_attack_cooldown = 2
+        self.heavy_attack_cooldown = 5
         self.heavy_attack_windup = 0.6
         self.light_attack_range = 1.8
         self.heavy_attack_range = 2.2
@@ -106,10 +106,10 @@ class Enemy:
             dmg = int(dmg * self.light_attack_damage_mult)
             
             # Verifica escudo
-            if getattr(player_stats, 'is_shielded', False):
+            shielded = getattr(player_stats, 'is_shielded', False)
+            if shielded:
                 self.attack_cooldown = self.light_attack_cooldown
                 return 0
-            
             self.attack_cooldown = self.light_attack_cooldown
             self.is_attacking = True
             self.attack_timer = 0.3
@@ -158,6 +158,10 @@ class Enemy:
     def execute_windup_attack(self, player_stats) -> int:
         """Executa o ataque pesado após o wind-up terminar."""
         if self.dead:
+            return 0
+        shielded = getattr(player_stats, 'is_shielded', False)
+        if shielded:
+            self.attack_cooldown = self.light_attack_cooldown
             return 0
         
         # Fecha a janela de parry
@@ -564,6 +568,10 @@ class MarluxiaBoss(Enemy):
         if not self.is_attacking:
             return 0
         if self.current_attack is None:
+            return 0
+        shielded = getattr(player_stats, 'is_shielded', False)
+        if shielded:
+            self.attack_cooldown = self.light_attack_cooldown
             return 0
 
         pat = self.current_attack

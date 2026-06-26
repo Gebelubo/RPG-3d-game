@@ -2414,6 +2414,7 @@ class Game:
             p.invincible -= dt
 
         if p.stats.shield_time > 0:
+            print(p.stats.shield_time)
             p.stats.shield_time -= dt
 
     def _handle_player_jump(self):
