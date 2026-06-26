@@ -768,7 +768,7 @@ class Game:
             door_tex = None
         return_portal = self._helper.make_box_mesh("pk_return", 2.5, 3.0, 0.3, color=(0.6, 0.3, 0.2))
         # Recua o portal de retorno para não ficar no centro da plataforma inicial
-        self.scene.add(SceneNode("pk_return", mesh=return_portal, position=(0, 1.5, 14.0)), texture=door_tex)
+        self.scene.add(SceneNode("pk_return", mesh=return_portal, position=(0, 1.5, 14.0), texture=door_tex))
         self.floor_state.parkour_return_pos = (0, 0.4, 14.5)
         # Adiciona uma hitbox física para o portal (colisão)
         try:
@@ -1300,6 +1300,7 @@ class Game:
 
     def _push_title_menu(self):
         def start():
+            self._helper.reset_game()
             self.menus.clear()
             self.player = Player("Natsuki Subaru")
             self._build_floor(self.FLOOR_ENTRY, show_story=True)
@@ -1351,6 +1352,7 @@ class Game:
     def _respawn(self):
         self.player.stats.hp = self.player.stats.max_hp
         self.player.stats.mp = self.player.stats.max_mp
+        self._helper.save_game(self.player)
         saved_floor = self._helper.load_game(self.player)
         floor = saved_floor if saved_floor is not None else self.current_floor
         self._build_floor(floor)

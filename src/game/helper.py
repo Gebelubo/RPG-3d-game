@@ -408,6 +408,11 @@ class Helper:
             json.dump(data, f)
 
 
+    def reset_game(self):
+        data = {"floor": 0, "hp": 200, "mp": 400, "max_hp": 200, "max_mp": 400, "level": 1, "xp": 0, "xp_next": 100, "atk": 12, "defense": 4, "inventory": {"health_potion_s": 4, "mana_potion": 3, "tracksuit": 1}, "gold": 0}
+        with open(SAVE_PATH, "w") as f:
+            json.dump(data, f)
+    
     def load_game(self, player):
         if not os.path.exists(SAVE_PATH):
             return None
