@@ -2186,13 +2186,7 @@ class Game:
             self._show_beatrice()
             if self.player_anim is not None:
                 self.player_anim.play("beatrice", restart_if_same=True)
-            if nearest:
-                e, node, _ = nearest
-                e.blind_time = 10.0; e.aggro = False
-                #self.hud.add_popup(f"Shamac! {e.stats.name} perdeu sua pista.", 2.2, (180,120,255))
-            else:
-                #self.hud.add_popup("Shamac!", 1.5, (180,120,255))
-                pass
+            for e, n in self.floor_state.enemies: e.blind_time = 10.0; e.aggro = False
             return
 
         if not nearest:
