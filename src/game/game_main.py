@@ -3801,10 +3801,13 @@ class Game:
         elif getattr(boss, '_enrage_cleanup_done', False):
             # Garante que a invencibilidade nunca volta após o enrage terminar
             boss.invincible_active = False
-
+            if _cur_phase==4:
+                    self.hud.add_popup("Lembre-se sempre, Natsuki Subaru", 2.5, (255, 160, 0))
+                    
         if getattr(boss, '_enrage_triggered', False) and getattr(boss, '_enrage_timer', 1.0) <= 0.0 \
                 and not getattr(boss, '_enrage_cleanup_done', False):
             self.hud.add_popup("É fácil desistir, mas isso não combina com você!", 3.0, (255, 0, 80))
+
             boss._enrage_cleanup_done = True
             boss._enrage_timer = 0.0
             boss.invincible_active = False
@@ -3813,7 +3816,6 @@ class Game:
             boss.phase = 4
             if hasattr(boss, 'invincible_timer'):
                 boss.invincible_timer = 0.0
-            self.hud.add_popup("Lembre-se sempre, Natsuki Subaru", 2.5, (255, 160, 0))
             boss._cp_1_done = True
             boss._cp_1_freeze = False
             boss.aggro = True
