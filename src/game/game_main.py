@@ -173,6 +173,7 @@ class Game:
         self.first_msg = False
         self._menu_anim_t = 0.0
         self._settings_row = 0
+        self.curr_mp = 0
         self._push_title_menu()
 
     # ── Cena base ─────────────────────────────────────────────────────────────
@@ -967,13 +968,11 @@ class Game:
         except Exception:
             rest_tex = None
 
-        # Reaplica a textura no chão e nas paredes já criadas por _build_room.
         if rest_tex is not None:
             for node in getattr(self.scene, "nodes", []):
                 if node.name in ("floor", "wall_n", "wall_s", "wall_e", "wall_w", "ceiling"):
                     node.texture = rest_tex
         
-        # ── Mesa central com livro ──
         table_w, table_h, table_d = 2.0, 1.0, 1.2
         table_pos = (0, table_h/2, 0)
         table_mesh = self._helper.make_box_mesh("rest_table", table_w, table_h, table_d, color=(0.5,0.5,0.5))
@@ -983,7 +982,6 @@ class Game:
             BoxHitbox(x=table_pos[0], y=table_pos[1], z=table_pos[2],
                       width=table_w, height=table_h, depth=table_d))
         
-        # Livro em cima da mesa
         book_tex_path = os.path.join(_HERE, "assets", "models", "tower", "rune_crystal.png")
         try:
             book_tex = Texture(book_tex_path)
@@ -996,26 +994,21 @@ class Game:
         book_node = SceneNode("rest_book", mesh=book_mesh, position=book_pos, texture=book_tex)
         self.scene.add(book_node)
 
-        # Guarda referência e estado do livro/relatórios no floor_state
         self.floor_state.rest_book_node   = book_node
         self.floor_state.rest_book_pos    = book_pos
-        self.floor_state.rest_book_radius = 1.5  # raio de interação
+        self.floor_state.rest_book_radius = 1.5 
         self.floor_state.report_open      = False
-        self.floor_state.report_index     = 1     # marluxia_report1.png ... report6.png
+        self.floor_state.report_index     = 1     
         self.floor_state.report_max       = 6
         self.floor_state.report_dir       = os.path.join(_HERE, "assets", "images", "marluxia_reports")
 
         self.scene.light.intensity = 0.8
         self.scene.light.color     = np.array([0.7,1.0,0.8], dtype=np.float32)
         self.player.stats.hp = self.player.stats.max_hp
-        self.player.stats.mp = self.player.stats.max_mp
+        #self.player.stats.mp = self.player.stats.max_mp
         self._helper.save_game(self.current_floor, self.player)
         self.floor_state.stair_locked = False
-        #self.hud.add_popup("Sala de Descanso", 3.0, (100,255,180))
-        #self.hud.add_popup("HP e MP recuperados! Jogo salvo.", 3.5, (180,255,200))
-        #self.hud.add_popup("Avance para enfrentar o boss final...", 4.5, (255,220,200))
 
-        # Garante escadas e porta com textura/colisão para avançar ao boss
         self._helper._build_stairs(self.scene, self.floor_state)
         dv, di = make_cube(1.0)
         dm = self._helper.make_box_mesh("boss_door",3.0,4.0,0.3, color=(0.6,0.2,0.6))
@@ -1041,9 +1034,6 @@ class Game:
         self.scene.light.color         = np.array([1.0,0.5,1.0], dtype=np.float32)
         self.scene.light.intensity     = 1.5
 
-        # ── Pedra/sarcófago onde a Emilia está deitada ───────────────────────
-        # Uma laje plana no chão que serve de "cama" para a animação sleeping.
-        # Tem física (BoxHitbox) para o player poder subir nela se quiser.
         stone_w, stone_h, stone_d = 1.8, 0.25, 3.2
         em_stone_pos = (3.5, stone_h / 2, -10.0)
         stone_mesh = self._helper.make_box_mesh(
@@ -1067,8 +1057,6 @@ class Game:
             )
         )
 
-        # ── Emilia deitada em cima da pedra (animação sleeping) ──────────────
-        # Y = topo da pedra + offset do modelo
         self._emilia_base_pos = (3.5, stone_h + EMILIA_Y_OFFSET, -10.0)
         em_pos = self._emilia_base_pos
         em_node, em_skinned, em_anim = self._helper.load_skinned_emilia(
@@ -1154,7 +1142,6 @@ class Game:
             self.floor_state.obstacles.append(
                 BoxHitbox(x=_px, y=0.5, z=0.0, width=2.2, height=1.2, depth=2.2)
             )
-        # Pedra da Emilia — hitbox lateral para impedir atravessar pela lateral
         self.floor_state.obstacles.append(
             BoxHitbox(x=em_stone_pos[0], y=em_stone_pos[1], z=em_stone_pos[2],
                       width=stone_w + 0.3, height=stone_h + 0.6, depth=stone_d + 0.3)
@@ -1392,7 +1379,7 @@ class Game:
 
     def _respawn(self):
         self.player.stats.hp = self.player.stats.max_hp
-        #self.player.stats.mp = self.player.stats.max_mp
+        self.player.stats.mp = self.curr_mp
         self._helper.save_game(self.current_floor, self.player)
         saved_floor = self._helper.load_game(self.player)
         floor = saved_floor if saved_floor is not None else self.current_floor
@@ -1411,6 +1398,7 @@ class Game:
             self._build_floor(next_floor)
         self._start_fade(_do_transition, duration=0.35)
         #self.hud.add_popup("Subindo para o próximo andar...", 2.0, (200,255,200))
+        self.curr_mp = self.player.stats.mp
 
     def _start_fade(self, callback, duration=0.35):
         self._fade_alpha         = 0.0
@@ -2187,12 +2175,10 @@ class Game:
 
         elif self.current_floor == self.FLOOR_REST:
         
-            # Fechar livro
             if self.book_open:
                 self._close_book()
                 return
             
-            # Avançar de andar
             pz = self.player.world_pos[2]
             px = self.player.world_pos[0]
             if pz < -11.0 and abs(px) < 3.0:
@@ -2251,9 +2237,7 @@ class Game:
             if dist < 8.0 and dist < nearest_dist:
                 nearest = (e,node,dist); nearest_dist = dist
 
-        # ── Shamac: a Beatrice + voiceline sempre aparecem (o MP já foi
-        #    gasto e o jogador pediu pra usar a magia). O efeito NO INIMIGO
-        #    (blind) só se aplica se houver um alvo de fato.
+
         if spell_id == "shamac":
             self.sounds.subaru_shamac.play()
             self._show_beatrice()
@@ -2263,8 +2247,7 @@ class Game:
             return
 
         if not nearest:
-            # Minya sem alvo: mesma lógica — ainda mostra a Beatrice e toca
-            # a voiceline, só não há dano pra aplicar (não tem em quem).
+  
             if spell_id == "minya":
                 self.sounds.subaru_minya.play()
                 self._show_beatrice()
@@ -2847,8 +2830,7 @@ class Game:
             north_limit = -8.1
 
         south_limit = hd
-        # Na sub-sala de parkour não há parede sul (o void fica abaixo)
-        # mas mantemos os limites laterais normais.
+
         if getattr(self.floor_state, 'in_parkour_room', False):
             south_limit = hd  # sem restrição extra
         p.world_pos[2] = max(
@@ -3112,7 +3094,6 @@ class Game:
                         "shadow": False
                     })
         
-        # ── FLOOR_GAUNTLET ──────────────────────────────────────────────────────
         elif self.current_floor == self.FLOOR_GAUNTLET:
             if pz < -13.0 and self.floor_state.stair_locked:
                 # Verifica quantos inimigos restam
@@ -3156,7 +3137,6 @@ class Game:
                     "shadow": False
                 })
         
-        # ── FLOOR_REST ──────────────────────────────────────────────────────────
         elif self.current_floor == self.FLOOR_REST:
             if pz < -13.0 and self.floor_state.stair_locked:
                 self.notifications.append({
@@ -3411,7 +3391,6 @@ class Game:
                     e.dead = True
                     node.visible = False
                     if hasattr(e, '_death_fade'):
-                        # Restaura cor original antes de sumir
                         sm = getattr(e, '_skinned_mesh', None)
                         if sm is not None and hasattr(e, '_death_fade_orig_color'):
                             sm.base_color = e._death_fade_orig_color
@@ -4307,9 +4286,6 @@ class Game:
         self._render_skinned(emilia_node, emilia_mesh, emilia_anim)
 
     def _render_enemy_skinned_meshes(self):
-        """Desenha todos os inimigos que foram carregados como skinned mesh
-        (Heartless terrestre e AerialKnocker). Inimigos com fallback .obj
-        já estão na scene e são renderizados por scene.draw() normalmente."""
         for e, node in self.floor_state.enemies:
             if e.dead and not getattr(e, '_dying', False):
                 continue
@@ -4323,10 +4299,6 @@ class Game:
             self._render_skinned(node, skinned_mesh, anim)
 
     def _render_skinned(self, node, skinned_mesh, anim_controller):
-        """Desenha um SkinnedMesh com skeleton animado (uBoneMatrices).
-        Reaproveitado pelo player (Subaru) e pela Beatrice — ambos ficam
-        fora do pipeline normal de Scene.draw(), que não sabe lidar com
-        bone matrices / multi-primitive skinned."""
         shader = self.skinned_shader
         shader.use()
         shader.set_mat4("uView",        self.camera.view_matrix())
@@ -4648,21 +4620,6 @@ class Game:
                 self.FLOOR_REST:     "Sala de Descanso",
                 self.FLOOR_BOSS:     "Sala do Boss – Marluxia",
             }
-            #h.draw_text(floor_names.get(self.current_floor, ""), sw//2, 12, 16, (200,180,255), center=True)
-
-            #hint = "[WASD] Mover  [Espaço] Pular  [Z] Atacar  [E/Enter] Interagir  [ESC] Pausar"
-            #if self.current_floor == self.FLOOR_PUZZLE:
-            #    hint = "[WASD] Mover  [Z] Ativar orbe (perto)  [X] Magia  [ESC] Pausar"
-            #if self.current_floor == self.FLOOR_RHYTHM:
-            #    hint = "[Enter] Iniciar Ritmo  [Z] Bater no ritmo  [ESC] Pausar"
-            #submenu_open = self.hud.spell_menu_open or self.hud.item_menu_open or self.hud.skill_menu_open
-            #h.draw_text(hint, 10, sh - 92 - (204 if submenu_open else 0), 11, (120,120,120))
-
-            #if self.current_floor in (self.FLOOR_ENTRY, self.FLOOR_PUZZLE, self.FLOOR_AERIAL, self.FLOOR_RHYTHM, self.FLOOR_GAUNTLET):
-            #    if self.floor_state.stair_locked:
-            #        h.draw_text("Passagem: TRANCADA", sw//2, 36, 14, (255,120,120), center=True)
-            #    else:
-            #        h.draw_text("Passagem: LIBERADA — [E/Enter] para subir", sw//2, 36, 14, (120,255,140), center=True)
             for e, node in self.floor_state.enemies:
                 # Pula o boss (já tem barra própria)
                 if isinstance(e, Boss):
@@ -4829,7 +4786,6 @@ class Game:
         # Fundo do painel
         h.draw_rect(_panel_x, _panel_y, _panel_w, 62, (0.03, 0.03, 0.08), alpha=0.82)
 
-        # Tempo restante
         _mins = int(_time_left) // 60
         _secs = int(_time_left) % 60
         h.draw_text(f"{_mins}:{_secs:02d}",
