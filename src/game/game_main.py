@@ -164,6 +164,7 @@ class Game:
         self._fade_in            = False
         self._post_fade_mode     = "explore"
         self._fade_build_pending = False
+        self.notifications = []
         self._push_title_menu()
 
     # ── Cena base ─────────────────────────────────────────────────────────────
@@ -2041,8 +2042,6 @@ class Game:
         pz = p.world_pos[2]; px = p.world_pos[0]
 
         if self.current_floor == self.FLOOR_ENTRY:
-            if pz < 10.0 and self.floor_state.stair_locked:
-                self.hud.draw_text("Porta trancada", 10, 50)
             if pz < -10.0 and not self.floor_state.stair_locked:
                 self._advance_floor(); return
             if pz < -10.0 and abs(px) < 3.0 and not self.floor_state.barrier_active and self.floor_state.stair_locked:
@@ -2778,10 +2777,405 @@ class Game:
         self._resolve_obstacle_collisions()
 
         self._resolve_enemy_collisions()
-
+        self._update_notifications()
         self._update_push_box(dt)
         self._update_player_visuals()
+            
+    def _update_notifications(self):
+        """Atualiza as notificações contextuais baseadas na posição do jogador e estado do andar."""
+        p = self.player
+        pz = p.world_pos[2]
+        px = p.world_pos[0]
+        
+        # Limpa notificações anteriores
+        self.notifications = []
+        
+        # ── ESTILOS MEDIEVAIS ────────────────────────────────────────────────────
+        # Cores pastel combinando com a temática
+        COR_OURO = (212, 175, 55)        # Dourado
+        COR_OURO_CLARO = (240, 215, 140) # Dourado claro
+        COR_PRATA = (192, 192, 210)      # Prata
+        COR_CARMIM = (180, 80, 100)      # Carmim / Vermelho nobre
+        COR_VERDE_MUSGO = (160, 180, 140) # Verde musgo
+        COR_AZUL_CELESTE = (160, 200, 230) # Azul celeste
+        COR_ROXO_LAVANDA = (200, 180, 230) # Roxo lavanda
+        COR_TERRA = (180, 160, 140)      # Terra / Marrom claro
+        COR_VERMELHO = (210, 100, 100)   # Vermelho suave
+        COR_VERDE = (140, 200, 150)      # Verde suave
+        COR_BRANCO_PEROLA = (230, 225, 220) # Branco pérola
+        COR_AMARELO_PASTEL = (230, 215, 160) # Amarelo pastel
+        
+        # ── FLOOR_ENTRY ──────────────────────────────────────────────────────────
+        if self.current_floor == self.FLOOR_ENTRY:
+            if pz < -13.0 and self.floor_state.stair_locked:
+                self.notifications.append({
+                    "text": "Pressione ENTER para entrar na torre de plêiades",
+                    "x": self.screen_w // 2,
+                    "y": 45,
+                    "size": 30,
+                    "color": COR_OURO_CLARO,
+                    "bold": True,
+                    "center": True,
+                    "outline": True,
+                    "shadow": True
+                })
+            
+            
+            if pz < -13.0 and not self.floor_state.stair_locked:
+                self.notifications.append({
+                    "text": "Pressione ENTER para avançar",
+                    "x": self.screen_w // 2,
+                    "y": 45,
+                    "size": 20,
+                    "color": COR_OURO,
+                    "bold": False,
+                    "center": True,
+                    "outline": True,
+                    "shadow": False
+                })
+        
+        # ── FLOOR_PUZZLE ─────────────────────────────────────────────────────────
+        elif self.current_floor == self.FLOOR_PUZZLE:
+            # Volta da sub-sala de parkour
+            if getattr(self.floor_state, 'in_parkour_room', False) and pz > 11.0 and abs(px) < 2.0:
+                self.notifications.append({
+                    "text": "Pressione ENTER para retornar",
+                    "x": self.screen_w // 2,
+                    "y": 45,
+                    "size": 18,
+                    "color": COR_PRATA,
+                    "bold": False,
+                    "center": True,
+                    "outline": True,
+                    "shadow": False
+                })
+            
+            # Entrada na sub-sala de parkour
+            if not getattr(self.floor_state, 'in_parkour_room', False) and pz > 13.5 and abs(px) < 2.0:
+                self.notifications.append({
+                    "text": "Pressione ENTER para descer",
+                    "x": self.screen_w // 2,
+                    "y": 45,
+                    "size": 18,
+                    "color": COR_AZUL_CELESTE,
+                    "bold": False,
+                    "center": True,
+                    "outline": True,
+                    "shadow": False
+                })
+            
+            # Porta no fundo
+            if pz < -13.0 and self.floor_state.stair_locked:
+                self.notifications.append({
+                    "text": "O puzzle ainda não foi completo",
+                    "x": self.screen_w // 2,
+                    "y": 45,
+                    "size": 18,
+                    "color": COR_CARMIM,
+                    "bold": False,
+                    "center": True,
+                    "outline": True,
+                    "shadow": False
+                })
+            
+            if pz < -13.0 and not self.floor_state.stair_locked:
+                self.notifications.append({
+                    "text": "Pressione ENTER para avançar",
+                    "x": self.screen_w // 2,
+                    "y": 45,
+                    "size": 20,
+                    "color": COR_OURO,
+                    "bold": False,
+                    "center": True,
+                    "outline": True,
+                    "shadow": False
+                })
+
+            p  = self.player
+            fs = self.floor_state
+
+            # ── Empurrar caixa ────────────────────────────────────────────────
+            pb = getattr(fs, "push_box", None)
+            if pb and not pb["activated"] and not getattr(fs, "in_parkour_room", False):
+                bx, bz = pb["pos"][0], pb["pos"][1]
+                dx = bx - p.world_pos[0]
+                dz = bz - p.world_pos[2]
+                if math.sqrt(dx*dx + dz*dz) < 1.8:
+                    self.notifications.append({
+                    "text": "Ataque a caixa para movimenta-la",
+                    "x": self.screen_w // 2,
+                    "y": 45,
+                    "size": 25,
+                    "color": COR_VERMELHO,
+                    "bold": True,
+                    "center": True,
+                    "outline": True,
+                    "shadow": True
+                })
+
+            for idx, piece in enumerate(self.puzzle_pieces):
+                if piece["collected"]:
+                    continue
+
+                spos = piece["scatter_pos"]
+                dx   = spos[0] - p.world_pos[0]
+                dy   = spos[1] - p.world_pos[1]
+                dz   = spos[2] - p.world_pos[2]
+                dist = math.sqrt(dx*dx + dy*dy + dz*dz)
+
+                if dist >= 2.0:
+                    continue
+
+                self.notifications.append({
+                    "text": "Pressione Z para coletar o fragmento",
+                    "x": self.screen_w // 2,
+                    "y": 35,
+                    "size": 25,
+                    "color": COR_VERDE,
+                    "bold": True,
+                    "center": True,
+                    "outline": True,
+                    "shadow": True
+                })
+        
+        # ── FLOOR_AERIAL ─────────────────────────────────────────────────────────
+        elif self.current_floor == self.FLOOR_AERIAL:
+            if pz < -13.0 and self.floor_state.stair_locked:
+                self.notifications.append({
+                    "text": "Derrote os Heartless",
+                    "x": self.screen_w // 2,
+                    "y": 45,
+                    "size": 18,
+                    "color": COR_CARMIM,
+                    "bold": False,
+                    "center": True,
+                    "outline": True,
+                    "shadow": False
+                })
+            
+            if pz < -13.0 and not self.floor_state.stair_locked:
+                self.notifications.append({
+                    "text": "Pressione ENTER para avançar",
+                    "x": self.screen_w // 2,
+                    "y": 45,
+                    "size": 20,
+                    "color": COR_OURO,
+                    "bold": False,
+                    "center": True,
+                    "outline": True,
+                    "shadow": False
+                })
+        
+        # ── FLOOR_RHYTHM ─────────────────────────────────────────────────────────
+        elif self.current_floor == self.FLOOR_RHYTHM:
+            if pz < -13.0 and self.floor_state.stair_locked:
+                self.notifications.append({
+                    "text": "Complete o Ritmo Ancestral",
+                    "x": self.screen_w // 2,
+                    "y": 45,
+                    "size": 18,
+                    "color": COR_ROXO_LAVANDA,
+                    "bold": False,
+                    "center": True,
+                    "outline": True,
+                    "shadow": False
+                })
+            
+            if pz < -13.0 and not self.floor_state.stair_locked:
+                self.notifications.append({
+                    "text": "Pressione ENTER para avançar",
+                    "x": self.screen_w // 2,
+                    "y": 45,
+                    "size": 20,
+                    "color": COR_OURO,
+                    "bold": False,
+                    "center": True,
+                    "outline": True,
+                    "shadow": False
+                })
+            
+            # Obelisco do ritmo
+            ob_pos = getattr(self.floor_state, 'rhythm_obelisk_pos', None)
+            if (ob_pos is not None and not self.floor_state.rhythm_done and self.game_mode == "explore"):
+                dist = ((px - ob_pos[0]) ** 2 + (pz - ob_pos[1]) ** 2) ** 0.5
+                if dist < 2.2:
+                    self.notifications.append({
+                        "text": "Pressione ENTER para iniciar o ritual",
+                        "x": self.screen_w // 2,
+                        "y": 45,
+                        "size": 18,
+                        "color": COR_VERDE_MUSGO,
+                        "bold": False,
+                        "center": True,
+                        "outline": True,
+                        "shadow": False
+                    })
+        
+        # ── FLOOR_GAUNTLET ──────────────────────────────────────────────────────
+        elif self.current_floor == self.FLOOR_GAUNTLET:
+            if pz < -13.0 and self.floor_state.stair_locked:
+                # Verifica quantos inimigos restam
+                alive = [e for e, n in self.floor_state.enemies if not e.dead and getattr(e, '_death_anim_timer', None) is None]
+                remaining = len(alive)
+                if remaining > 0:
+                    self.notifications.append({
+                        "text": f"Inimigos restantes: {remaining}",
+                        "x": self.screen_w // 2,
+                        "y": 45,
+                        "size": 18,
+                        "color": COR_VERMELHO,
+                        "bold": False,
+                        "center": True,
+                        "outline": True,
+                        "shadow": False
+                    })
+                else:
+                    self.notifications.append({
+                        "text": "Aguarde a próxima onda",
+                        "x": self.screen_w // 2,
+                        "y": 45,
+                        "size": 18,
+                        "color": COR_OURO_CLARO,
+                        "bold": False,
+                        "center": True,
+                        "outline": True,
+                        "shadow": False
+                    })
+            
+            if pz < -13.0 and not self.floor_state.stair_locked:
+                self.notifications.append({
+                    "text": "Pressione ENTER para avançar",
+                    "x": self.screen_w // 2,
+                    "y": 45,
+                    "size": 20,
+                    "color": COR_OURO,
+                    "bold": False,
+                    "center": True,
+                    "outline": True,
+                    "shadow": False
+                })
+        
+        # ── FLOOR_REST ──────────────────────────────────────────────────────────
+        elif self.current_floor == self.FLOOR_REST:
+            if pz < -13.0 and self.floor_state.stair_locked:
+                self.notifications.append({
+                    "text": "Você precisa descansar",
+                    "x": self.screen_w // 2,
+                    "y": 45,
+                    "size": 18,
+                    "color": COR_TERRA,
+                    "bold": False,
+                    "center": True,
+                    "outline": True,
+                    "shadow": False
+                })
+            
+            if pz < -13.0 and not self.floor_state.stair_locked:
+                self.notifications.append({
+                    "text": "Pressione ENTER para enfrentar o Boss",
+                    "x": self.screen_w // 2,
+                    "y": 45,
+                    "size": 20,
+                    "color": COR_OURO_CLARO,
+                    "bold": True,
+                    "center": True,
+                    "outline": True,
+                    "shadow": True
+                })
+            
+            # Abrir livro
+            book_pos = getattr(self.floor_state, 'rest_book_pos', None)
+            radius = getattr(self.floor_state, 'rest_book_radius', 1.5)
+            if book_pos is not None and not self.book_open:
+                dx = self.player.world_pos[0] - book_pos[0]
+                dz = self.player.world_pos[2] - book_pos[2]
+                dist = (dx * dx + dz * dz) ** 0.5
+                if dist <= radius:
+                    self.notifications.append({
+                        "text": "Pressione E para ler os relatos",
+                        "x": self.screen_w // 2,
+                        "y": 75,
+                        "size": 16,
+                        "color": COR_BRANCO_PEROLA,
+                        "bold": False,
+                        "center": True,
+                        "outline": True,
+                        "shadow": False
+                    })
+            
+            # Mostra que HP e MP foram recuperados (quando entra na sala)
+            if not hasattr(self, '_rest_notified'):
+                self._rest_notified = True
+                self.notifications.append({
+                    "text": "✦ Seus ferimentos foram curados ✦",
+                    "x": self.screen_w // 2,
+                    "y": self.screen_h // 2 - 30,
+                    "size": 28,
+                    "color": COR_VERDE_MUSGO,
+                    "bold": True,
+                    "center": True,
+                    "outline": True,
+                    "shadow": True
+                })
+                self.notifications.append({
+                    "text": "Descanse antes de continuar",
+                    "x": self.screen_w // 2,
+                    "y": self.screen_h // 2 + 20,
+                    "size": 18,
+                    "color": COR_OURO_CLARO,
+                    "bold": False,
+                    "center": True,
+                    "outline": True,
+                    "shadow": False
+                })
+        
+        # ── FLOOR_BOSS ──────────────────────────────────────────────────────────
+        elif self.current_floor == self.FLOOR_BOSS:
+            boss = getattr(self.floor_state, 'boss', None)
+            if boss is not None and not boss.dead:
+                # Aviso de ataque do boss (parry)
+                if getattr(boss, 'is_winding_up', False):
+                    self.notifications.append({
+                        "text": "⚡ PARRY! ⚡",
+                        "x": self.screen_w // 2,
+                        "y": self.screen_h // 2 - 80,
+                        "size": 52,
+                        "color": (255, 215, 0),
+                        "bold": True,
+                        "center": True,
+                        "outline": True,
+                        "shadow": True
+                    })
                 
+                # Fase do boss
+                phase = getattr(boss, 'phase', 1)
+                fase_textos = {
+                    1: "FASE 1: O DESPERTAR",
+                    2: "FASE 2: A MALDIÇÃO",
+                    3: "FASE 3: A FÚRIA",
+                    4: "FASE 4: O CAOS",
+                    5: "FASE 5: A ASCENSÃO"
+                }
+                
+                if phase in fase_textos and getattr(boss, f'_phase{phase}_triggered', False):
+                    # Mostra a fase apenas quando ela é ativada (usando um timer)
+                    if not hasattr(self, f'_phase{phase}_shown'):
+                        setattr(self, f'_phase{phase}_shown', 0.0)
+                    
+                    timer = getattr(self, f'_phase{phase}_shown', 0.0)
+                    if timer < 3.0:  # Mostra por 3 segundos
+                        self.notifications.append({
+                            "text": fase_textos[phase],
+                            "x": self.screen_w // 2,
+                            "y": 100,
+                            "size": 28,
+                            "color": COR_OURO_CLARO,
+                            "bold": True,
+                            "center": True,
+                            "outline": True,
+                            "shadow": True
+                        })
+                    
     def _update_push_box(self, dt):
         """Física simples da caixa empurrável no andar de puzzle."""
         if self.current_floor != self.FLOOR_PUZZLE:
@@ -4205,7 +4599,20 @@ class Game:
                 # Borda da barra
                 h.draw_rect(bar_x, bar_y, BAR_W, 1, (0.3, 0.3, 0.3), alpha=0.6)
                 h.draw_rect(bar_x, bar_y + BAR_H - 1, BAR_W, 1, (0.3, 0.3, 0.3), alpha=0.6)
-                
+
+        if self.game_mode == "explore" and hasattr(self, 'notifications'):
+            for note in self.notifications:
+                h.draw_text(
+                    note["text"],
+                    note["x"],
+                    note["y"],
+                    note["size"],
+                    note["color"],
+                    bold=note.get("bold", False),
+                    center=note.get("center", False),
+                    outline=note.get("outline", False),
+                    shadow=note.get("shadow", False)
+                )
 
     def _draw_rhythm_hud(self, h):
         sw, sh = self.screen_w, self.screen_h
