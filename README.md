@@ -22,6 +22,10 @@ O jogo roda em uma janela OpenGL (1280×720) com modelos animados GLB, combate e
 [![GamePlay](https://img.youtube.com/vi/hrsclWouLBA/maxresdefault.jpg)](https://youtu.be/hrsclWouLBA?si=R3HvN0UXci0uFbb4)
 [![Guia para rodar e code review](https://img.youtube.com/vi/CzqVb_gcgOo/hqdefault.jpg)](https://youtu.be/RLq_CcwbXZY)
 
+### Canva
+
+Link do canva: >  https://canva.link/v810nukrk15ldsf
+
 
 ## Início rápido
 
