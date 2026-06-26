@@ -1145,7 +1145,7 @@ class Game:
 
     def _start_story(self):
         self._show_story([
-            "src/assets/images/prologue_letter.png",
+            os.path.join(_HERE, "assets", "images", "prologue_letter.png") 
         ], callback=self._story_done)
 
     def _show_story(self, lines, callback=None):
