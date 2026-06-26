@@ -1352,7 +1352,7 @@ class Game:
     def _respawn(self):
         self.player.stats.hp = self.player.stats.max_hp
         self.player.stats.mp = self.player.stats.max_mp
-        self._helper.save_game(self.player)
+        self._helper.save_game(self.current_floor, self.player)
         saved_floor = self._helper.load_game(self.player)
         floor = saved_floor if saved_floor is not None else self.current_floor
         self._build_floor(floor)
