@@ -369,7 +369,7 @@ class HUD:
             self.draw_medallion(px + 20, iy + 12, 14, ic)
             self.draw_text(sp.name,            px + 40, iy-2,  14, (225, 230, 255))
             if sp.name == "invisible_providence":
-                self.draw_text(f"{sp.mp_cost} MP", px + 40, iy + 14, 11, (135, 175, 255))
+                self.draw_text(f"{sp.mp_cost} HP", px + 40, iy + 14, 11, (135, 175, 255))
             else:
                 self.draw_text(f"{sp.mp_cost} MP", px + 40, iy + 14, 11, (135, 175, 255))
             self.draw_text(f"[{i + 1}]",       px + 210, iy + 8, 13, (230, 210, 130), bold=True)
