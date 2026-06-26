@@ -15,7 +15,7 @@ class Player:
     ROLL_TIME   = 0.45
 
     def __init__(self, name="Natsuki Subaru"):
-        self.stats = Stats(name=name, level=1, max_hp=10000, hp=60,
+        self.stats = Stats(name=name, level=1, max_hp=600, hp=600,
                            max_mp=60, mp=60, atk=12, defense=4, spd=10)
         self.inventory = Inventory(gold=0)
         self.inventory.add("health_potion_s", 3)

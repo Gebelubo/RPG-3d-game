@@ -1504,7 +1504,7 @@ class Game:
                             self.sounds.marluxia_hit.play()
                 else:
                     actual = e.stats.take_damage(damage)
-                self.hud.add_popup(f"-{actual} HP", 1.0, (255,200,140))
+                #self.hud.add_popup(f"-{actual} HP", 1.0, (255,200,140))
                 if not e.stats.is_alive():
                     from src.entities.enemy import Boss as _Boss2
                     if isinstance(e, _Boss2) and not getattr(e, '_dying', False):
@@ -2015,6 +2015,8 @@ class Game:
         pz = p.world_pos[2]; px = p.world_pos[0]
 
         if self.current_floor == self.FLOOR_ENTRY:
+            if pz < 10.0 and self.floor_state.stair_locked:
+                self.hud.draw_text("Porta trancada", 10, 50)
             if pz < -10.0 and not self.floor_state.stair_locked:
                 self._advance_floor(); return
             if pz < -10.0 and abs(px) < 3.0 and not self.floor_state.barrier_active and self.floor_state.stair_locked:
@@ -2140,7 +2142,7 @@ class Game:
             self.player.stats.shield_time = 10.0; self._show_beatrice()
             if self.player_anim is not None:
                 self.player_anim.play("beatrice", restart_if_same=True)
-            self.hud.add_popup("EMT ativado! Protegido por 10s", 2.0, (80,220,255)); return
+            #self.hud.add_popup("EMT ativado! Protegido por 10s", 2.0, (80,220,255)); return
         # ── Procura alvo mais próximo (pode não existir nenhum) ──────────────
         nearest = None; nearest_dist = 999.0
         for e, node in self.floor_state.enemies:
@@ -2161,9 +2163,10 @@ class Game:
             if nearest:
                 e, node, _ = nearest
                 e.blind_time = 10.0; e.aggro = False
-                self.hud.add_popup(f"Shamac! {e.stats.name} perdeu sua pista.", 2.2, (180,120,255))
+                #self.hud.add_popup(f"Shamac! {e.stats.name} perdeu sua pista.", 2.2, (180,120,255))
             else:
-                self.hud.add_popup("Shamac!", 1.5, (180,120,255))
+                #self.hud.add_popup("Shamac!", 1.5, (180,120,255))
+                pass
             return
 
         if not nearest:
@@ -2174,7 +2177,7 @@ class Game:
                 self._show_beatrice()
                 if self.player_anim is not None:
                     self.player_anim.play("beatrice", restart_if_same=True)
-                self.hud.add_popup(f"{sp.name}!", 1.5, (180,120,255))
+                #self.hud.add_popup(f"{sp.name}!", 1.5, (180,120,255))
             #self.hud.add_popup(f"{sp.name} – sem alvo próximo", 1.2, (140,140,255))
             return
         e, node, _ = nearest
@@ -2195,7 +2198,7 @@ class Game:
             self._show_beatrice()
             if self.player_anim is not None:
                 self.player_anim.play("beatrice", restart_if_same=True)
-        self.hud.add_popup(f"{sp.name}! -{dmg} HP", 2.0, (180,120,255))
+        #self.hud.add_popup(f"{sp.name}! -{dmg} HP", 2.0, (180,120,255))
         if not e.stats.is_alive():
             from src.entities.enemy import Boss as _Boss2
             if isinstance(e, _Boss2) and not getattr(e, '_dying', False):
@@ -2864,7 +2867,8 @@ class Game:
                     #self.hud.add_popup("Tarde demais!", 0.5, (255, 100, 100))
                     break
             else:
-                self.hud.add_popup("Sem ataque pesado!", 0.5, (255, 100, 100))
+                #self.hud.add_popup("Sem ataque pesado!", 0.5, (255, 100, 100))
+                pass
 
     def _update_enemies(self, dt):
         # Primeiro, pega a posição do player uma vez
@@ -2902,7 +2906,7 @@ class Game:
                     del e._death_anim_timer
                     xp = e.stats.level * 20 + random.randint(5,15)
                     leveled = self.player.stats.gain_xp(xp)
-                    self.hud.add_popup(f"+{xp} XP", 1.5, (230,200,80))
+                    #self.hud.add_popup(f"+{xp} XP", 1.5, (230,200,80))
                     if leveled: self.hud.add_popup("LEVEL UP!", 3.0, (255,230,50))
                     self._check_floor_progress()
                 else:
@@ -3024,7 +3028,7 @@ class Game:
                         self.player.invincible = 0.8
                         self.player.is_taking_damage = True
                         self.player.reaction_timer = self.player.REACTION_TIME
-                        self.hud.add_popup(f"-{dmg} HP (Pesado)", 1.5, (255, 50, 50))
+                        #self.hud.add_popup(f"-{dmg} HP (Pesado)", 1.5, (255, 50, 50))
                         
                         if self.player.is_dead:
                             self._trigger_death()
@@ -3080,7 +3084,7 @@ class Game:
                             self.player.invincible = 0.3
                             self.player.is_taking_damage = True
                             self.player.reaction_timer = self.player.REACTION_TIME
-                            self.hud.add_popup(f"-{dmg} HP (Leve)", 1.0, (255, 180, 80))
+                            #self.hud.add_popup(f"-{dmg} HP (Leve)", 1.0, (255, 180, 80))
                             
                             if self.player.is_dead:
                                 self._trigger_death()
@@ -3138,7 +3142,7 @@ class Game:
                 node.visible = False
                 xp = boss.stats.level * 20 + 30
                 self.player.stats.gain_xp(xp)
-                self.hud.add_popup(f"+{xp} XP", 2.0, (230,200,80))
+                #self.hud.add_popup(f"+{xp} XP", 2.0, (230,200,80))
                 self._on_boss_defeated()
             return
         if boss.dead:
@@ -3279,7 +3283,7 @@ class Game:
                         self.player.invincible = 0.8
                         self.player.is_taking_damage = True
                         self.player.reaction_timer = self.player.REACTION_TIME
-                        self.hud.add_popup(f"💥 -{dmg} HP (Boss)", 1.5, (255, 50, 50))
+                        #self.hud.add_popup(f"💥 -{dmg} HP (Boss)", 1.5, (255, 50, 50))
                         
                         if self.player.is_dead:
                             self._trigger_death()
@@ -3320,6 +3324,8 @@ class Game:
             boss._phase2_triggered = True
             boss._atk_speed_mult = 2.0
             self.hud.add_popup("FASE 2!", 2.5, (255, 160, 0))
+            self.hud.add_popup("MALDIÇÃO - MAGIA BLOQUEADA", 2.5, (255, 160, 0))
+
 
         if not getattr(boss, '_phase3_triggered', False) and _cur_phase >= 3 and not boss.dead:
             boss._phase3_triggered = True
@@ -3476,7 +3482,7 @@ class Game:
                             self.player.invincible = 0.6
                             self.player.is_taking_damage = True
                             self.player.reaction_timer = self.player.REACTION_TIME
-                            self.hud.add_popup(f"-{dmg} HP", 1.2, (255, 80, 80))
+                            #self.hud.add_popup(f"-{dmg} HP", 1.2, (255, 80, 80))
                             if self.player.is_dead:
                                 self._trigger_death()
                         boss._finish_attack()
@@ -3671,7 +3677,7 @@ class Game:
                 self.player.invincible       = 0.6
                 self.player.is_taking_damage = True
                 self.player.reaction_timer   = self.player.REACTION_TIME
-                self.hud.add_popup(f"-{dmg} HP (shoot)", 1.2, (180, 50, 255))
+                #self.hud.add_popup(f"-{dmg} HP (shoot)", 1.2, (180, 50, 255))
                 if self.player.is_dead:
                     self._trigger_death()
                 try: self.scene.remove(node)
@@ -3730,7 +3736,7 @@ class Game:
                 self.player.invincible       = 0.8
                 self.player.is_taking_damage = True
                 self.player.reaction_timer   = self.player.REACTION_TIME
-                self.hud.add_popup(f"-{dmg} HP (buraco negro)", 1.0, (120, 0, 200))
+                #self.hud.add_popup(f"-{dmg} HP (buraco negro)", 1.0, (120, 0, 200))
                 if self.player.is_dead:
                     self._trigger_death()
         boss.blackholes = alive
@@ -4103,21 +4109,21 @@ class Game:
                 self.FLOOR_REST:     "Sala de Descanso",
                 self.FLOOR_BOSS:     "Sala do Boss – Marluxia",
             }
-            h.draw_text(floor_names.get(self.current_floor, ""), sw//2, 12, 16, (200,180,255), center=True)
+            #h.draw_text(floor_names.get(self.current_floor, ""), sw//2, 12, 16, (200,180,255), center=True)
 
-            hint = "[WASD] Mover  [Espaço] Pular  [Z] Atacar  [E/Enter] Interagir  [ESC] Pausar"
-            if self.current_floor == self.FLOOR_PUZZLE:
-                hint = "[WASD] Mover  [Z] Ativar orbe (perto)  [X] Magia  [ESC] Pausar"
-            if self.current_floor == self.FLOOR_RHYTHM:
-                hint = "[Enter] Iniciar Ritmo  [Z] Bater no ritmo  [ESC] Pausar"
-            submenu_open = self.hud.spell_menu_open or self.hud.item_menu_open or self.hud.skill_menu_open
-            h.draw_text(hint, 10, sh - 92 - (204 if submenu_open else 0), 11, (120,120,120))
+            #hint = "[WASD] Mover  [Espaço] Pular  [Z] Atacar  [E/Enter] Interagir  [ESC] Pausar"
+            #if self.current_floor == self.FLOOR_PUZZLE:
+            #    hint = "[WASD] Mover  [Z] Ativar orbe (perto)  [X] Magia  [ESC] Pausar"
+            #if self.current_floor == self.FLOOR_RHYTHM:
+            #    hint = "[Enter] Iniciar Ritmo  [Z] Bater no ritmo  [ESC] Pausar"
+            #submenu_open = self.hud.spell_menu_open or self.hud.item_menu_open or self.hud.skill_menu_open
+            #h.draw_text(hint, 10, sh - 92 - (204 if submenu_open else 0), 11, (120,120,120))
 
-            if self.current_floor in (self.FLOOR_ENTRY, self.FLOOR_PUZZLE, self.FLOOR_AERIAL, self.FLOOR_RHYTHM, self.FLOOR_GAUNTLET):
-                if self.floor_state.stair_locked:
-                    h.draw_text("Passagem: TRANCADA", sw//2, 36, 14, (255,120,120), center=True)
-                else:
-                    h.draw_text("Passagem: LIBERADA — [E/Enter] para subir", sw//2, 36, 14, (120,255,140), center=True)
+            #if self.current_floor in (self.FLOOR_ENTRY, self.FLOOR_PUZZLE, self.FLOOR_AERIAL, self.FLOOR_RHYTHM, self.FLOOR_GAUNTLET):
+            #    if self.floor_state.stair_locked:
+            #        h.draw_text("Passagem: TRANCADA", sw//2, 36, 14, (255,120,120), center=True)
+            #    else:
+            #        h.draw_text("Passagem: LIBERADA — [E/Enter] para subir", sw//2, 36, 14, (120,255,140), center=True)
 
     def _draw_rhythm_hud(self, h):
         sw, sh = self.screen_w, self.screen_h

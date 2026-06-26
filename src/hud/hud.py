@@ -304,7 +304,7 @@ class HUD:
         lvl_cy = by - 8 + 18
         self.draw_medallion(lvl_cx, lvl_cy, 15, AMETHYST_F)
         self.draw_text(f"{p.level}", lvl_cx, lvl_cy + 1, 15, (255, 235, 190), bold=True, center=True)
-        self.draw_text("NV", lvl_cx, lvl_cy - 22, 9, (225, 205, 255), bold=True, center=True)
+        self.draw_text("NV", lvl_cx, lvl_cy + 15, 9, (225, 205, 255), bold=True, center=True)
 
         # Barra de HP
         self.draw_bar(bx, by + 14, 196, 16, p.hp / p.max_hp,
@@ -323,7 +323,7 @@ class HUD:
         # Indicador de escudo EMT
         if getattr(p, 'is_shielded', False):
             shield_left = int(max(0.0, p.shield_time) + 0.9)
-            self.draw_gem(bx + 216, by + 22, 10, SAPPHIRE_F, sides=6)
+            self.draw_gem(bx + 222, by + 45, 10, SAPPHIRE_F, sides=6)
             self.draw_text(f"{shield_left}s", bx + 216, by + 40, 11, (175, 225, 255),
                            bold=True, center=True)
 
@@ -405,8 +405,8 @@ class HUD:
             if i % 2 == 0:
                 self.draw_rect(px + 4, iy - 4, pw - 8, 38, (1, 1, 1), alpha=0.04)
             self.draw_medallion(px + 20, iy + 12, 14, ic)
-            self.draw_text(sp.name,            px + 40, iy + 2,  14, (225, 230, 255))
-            self.draw_text(f"{sp.mp_cost} MP", px + 40, iy + 18, 11, (135, 175, 255))
+            self.draw_text(sp.name,            px + 40, iy-2,  14, (225, 230, 255))
+            self.draw_text(f"{sp.mp_cost} MP", px + 40, iy + 14, 11, (135, 175, 255))
             self.draw_text(f"[{i + 1}]",       px + 210, iy + 8, 13, (230, 210, 130), bold=True)
 
     def _draw_item_submenu(self):
@@ -455,8 +455,8 @@ class HUD:
             if i % 2 == 0:
                 self.draw_rect(px + 4, iy - 4, pw - 8, 38, (1, 1, 1), alpha=0.04)
             self.draw_medallion(px + 20, iy + 12, 14, col)
-            self.draw_text(name, px + 40, iy + 2,  12, (255, 230, 150))
-            self.draw_text(desc, px + 40, iy + 18, 10, (205, 185, 125))
+            self.draw_text(name, px + 40, iy -2,  12, (255, 230, 150))
+            self.draw_text(desc, px + 40, iy + 14, 10, (205, 185, 125))
 
     # ── Telas especiais ───────────────────────────────────────────────────────
 
