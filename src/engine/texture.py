@@ -1,8 +1,3 @@
-"""
-texture.py  –  Load images into OpenGL textures.
-Uses Pillow only for image decoding; all GL calls are explicit.
-"""
-
 import numpy as np
 from PIL import Image
 from OpenGL.GL import (
@@ -76,7 +71,6 @@ class Texture:
 
 
 class ProceduralTexture(Texture):
-    """Generate a simple checkerboard texture without any image file."""
 
     def __init__(self, size=64, color_a=(200,200,200), color_b=(100,100,100)):
         self.path = "<procedural>"

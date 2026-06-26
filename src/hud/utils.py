@@ -110,7 +110,6 @@ def _text_tex(text: str, size: int, color=(255, 255, 255), bold=False,
 
 
 def _make_quad(x, y, w, h):
-    """Cria um VAO para um quad 2-D. Caller é responsável por deletar."""
     verts = np.array([
         x,   y,   0, 0, 1,
         x+w, y,   0, 1, 1,

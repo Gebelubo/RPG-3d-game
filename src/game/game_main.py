@@ -408,10 +408,6 @@ class Game:
             position=(bx, by, bz), rotation=(0, 180, 0)
         )
         if beat_skinned_node is not None:
-            # Skinned: NÃO entra em self.scene.add() — é desenhado à parte
-            # por _render_skinned_beatrice() (shader com uBoneMatrices),
-            # igual ao player_node skinned. Scene.draw() normal não sabe
-            # desenhar skin/bones.
             bnode = beat_skinned_node
             self.beatrice_skinned_mesh = beat_skinned_mesh
             self.beatrice_anim         = beat_anim
@@ -507,9 +503,6 @@ class Game:
         # Timer acumulado para animação da luz na sala de entrada
         self._entry_light_t = 0.0
 
-        #self.hud.add_popup("Avance pelo corredor...", 3.0, (200,200,255))
-        #self.hud.add_popup("[E/Enter] perto da porta para abrir", 5.0, (180,200,255))
-
 
     def _build_floor_puzzle(self):
         # Só reinicia a música se não estiver tocando puzzle.mp3
@@ -559,11 +552,6 @@ class Game:
 
         piece_w, piece_h  = frame_w / 2, frame_h / 2
         pv, pi            = make_plane(piece_w, piece_h, 1)
-        # Layout:
-        #   idx 0 → sub-sala de parkour  (começa invisível, spawna lá)
-        #   idx 1 → livre / parkour sala (5.5, 6, -7)
-        #   idx 2 → em cima do botão     (-5.5, 2.5, 4)  precisa subir na caixa
-        #   idx 3 → heartless            (-3, 1.4, 2)
         scatter_positions = [(0, 999, 0), (5.5, 6, -7), (-5.5, 2.5, 4), (-3, 1.4, 2)]
         mural_offsets     = [
             (-piece_w/2,  piece_h/2),
@@ -672,7 +660,6 @@ class Game:
         #self.hud.add_popup("Um fragmento está numa sala abaixo — volte pela entrada sul!", 5.0, (180,200,255))
         #self.hud.add_popup("Heartless guardam outro fragmento — derrote-os primeiro!", 5.5, (255,180,100))
         #self.hud.add_popup("Empurre a caixa [Z] até o botão verde e suba nela!", 6.0, (180,255,160))
-        # Porta no fundo do corredor (Norte, Z=-15) — permite avançar ao subir as escadas
         dv, di = make_cube(1.0)
         dm = self._helper.make_box_mesh("door",3.0,4.0,0.3, color=(0.35,0.22,0.10), ka=0.2,kd=0.7,ks=0.3,shin=24)
         door_node = SceneNode("door", mesh=dm, position=(0, 4.0,-15), scale=(1,1,1), texture=door_tex)
@@ -683,8 +670,6 @@ class Game:
             self._disable_barrier()
 
     def _build_parkour_room(self):
-        """Constrói a sub-sala de parkour sobre o void."""
-        # Salva o estado atual do puzzle antes de limpar a cena
         self._parkour_snapshot = {
             "puzzle_state": [(p["collected"], p["scatter_pos"]) for p in self.puzzle_pieces],
             "box_state": None,
@@ -1132,8 +1117,7 @@ class Game:
         for px in (-8.5, 8.5):
             self._helper._add_tower_deco(self.scene, self.floor_state, "platform", position=(px, 0.0, 0.0), scale=(1.0, 1.0, 1.0), collision_radius=1.2)
 
-        # ── BoxHitbox explícitas para objetos sólidos na sala do boss ─────────
-        # Pilar central (tower) ao fundo — bloqueia passagem
+
         self.floor_state.obstacles.append(
             BoxHitbox(x=0.0, y=2.0, z=-13.5, width=2.2, height=5.0, depth=2.2)
         )
@@ -1151,32 +1135,25 @@ class Game:
         self.hud.add_popup("Salve Emilia!", 3.5, (255, 200, 255))
 
     def _world_to_screen(self, world_pos):
-        """Converte uma posição 3D para coordenadas de tela 2D."""
-        # Pega a matriz de view e projeção da câmera
         view_matrix = self.camera.view_matrix()
         proj_matrix = self.camera.projection_matrix(self.scene._aspect)
         
-        # Converte o ponto para espaço de clip
         world_pos_h = np.array([world_pos[0], world_pos[1], world_pos[2], 1.0], dtype=np.float32)
         clip_pos = proj_matrix @ view_matrix @ world_pos_h
         
-        # Divide por w (perspectiva)
         if clip_pos[3] == 0:
             return None
         ndc_x = clip_pos[0] / clip_pos[3]
         ndc_y = clip_pos[1] / clip_pos[3]
         
-        # Se estiver atrás da câmera, retorna None
         if clip_pos[2] < -1.0:
             return None
         
-        # Converte para coordenadas de tela
         screen_x = (ndc_x + 1) * 0.5 * self.screen_w
         screen_y = (1 - ndc_y) * 0.5 * self.screen_h
         
         return (int(screen_x), int(screen_y))
 
-    # ── Story / Cutscene ─────────────────────────────────────────────────────
 
     def _start_story(self):
         self._show_story([
@@ -1227,14 +1204,10 @@ class Game:
         self.sounds.subaru_myname.play()
 
     def _show_ending(self):
-        # Mantido por compatibilidade; a cutscene real é orquestrada por
-        # _on_boss_defeated usando callbacks encadeados.
+  
         self._on_boss_defeated()
 
     def _apply_emilia_phase_offset(self, phase: str, em_node=None):
-        """Aplica o offset de posição da fase atual da cutscene da Emilia,
-        sempre a partir da posição base (nunca soma incrementalmente —
-        evita acúmulo de erro se a fase for reaplicada)."""
 
         if em_node is None:
             em_node = getattr(self.floor_state, 'emilia_node', None)
@@ -1247,7 +1220,6 @@ class Game:
         em_node.position[2] = base[2] + off[2]
 
     def _show_ending_part2(self, callback):
-        """Segunda caixa de diálogo: Emilia diz 'Subaru?' e lembra."""
         self._show_story([
             '"Subaru...?"',
             "",
@@ -1265,7 +1237,6 @@ class Game:
         ], callback=callback)
 
     def _show_ending_part3(self, callback):
-        """Terceira caixa de diálogo"""
         self._show_story([
             '"Obrigada por me salvar, Subaru."',
             "",
@@ -1462,26 +1433,13 @@ class Game:
         pygame.mixer.music.load(os.path.join(_HERE, "assets", "music", "credits.mp3"))
         pygame.mixer.music.play()
 
-        # ── Sequência da cutscene da Emilia ──────────────────────────────────
-        #
-        # Fase 1 (imediata): tela preta + texto "Marluxia cai..."
-        #   → volta ao jogo: Emilia em waking
-        # Fase 2: tela preta + texto "Subaru?" / memórias
-        #   → volta ao jogo: Emilia em idle
-        # Fase 3: tela preta + "eu me lembro de tudo" / créditos
-        #
-        # Cada fase é encadeada via callbacks da _show_story.
-
         def _after_story_1():
-            # Troca a animação da Emilia para waking
             if self.emilia_anim is not None:
                 self.emilia_anim.play("waking", restart_if_same=True)
             self.emilia_cutscene_phase = "waking"
             self._apply_emilia_phase_offset("waking") 
-            # Volta ao explore brevemente para o jogador ver a animação
             self.game_mode = "explore"
             self.input.capture_mouse(True)
-            # Depois de WAKING_DURATION segundos inicia a 2ª história
             self._emilia_waking_timer = 0.0
             self._emilia_waking_pending = True
 
@@ -1493,15 +1451,12 @@ class Game:
             self._apply_emilia_phase_offset("idle") 
             self.game_mode = "explore"
             self.input.capture_mouse(True)
-            # Depois de IDLE_SHOW_DURATION segundos inicia a 3ª história
             self._emilia_idle_timer = 0.0
             self._emilia_idle_pending = True
 
         def _after_story_3():
             self._start_credits()
 
-        # Timers de espera (segundos que o jogador vê a animação antes da
-        # próxima caixa de texto aparecer automaticamente).
         self._emilia_waking_duration = 3.5   # tempo assistindo a waking
         self._emilia_idle_duration   = 2.5   # tempo assistindo a idle
         self._emilia_waking_timer    = 0.0
@@ -1581,11 +1536,7 @@ class Game:
                         # Boss: inicia animação de morte, não some ainda
                         e.is_attacking = False
                         e.aggro        = False
-                        # _anim_state / anim.play("death") NÃO são setados aqui:
-                        # isso é responsabilidade de _update_boss, que também
-                        # dispara o som de morte (marluxia_death). Se setarmos
-                        # _anim_state="death" aqui, a checagem de lá nunca vê
-                        # a transição e o som nunca toca.
+   
                         e._dying       = True
                         e._death_timer = 3.0
                     else:
@@ -1617,7 +1568,6 @@ class Game:
             pass
 
     def _try_activate_orb(self):
-        """Coleta fragmento ou empurra caixa."""
         p  = self.player
         fs = self.floor_state
 
@@ -1699,7 +1649,6 @@ class Game:
             #self.hud.add_popup("Quadro completo! Suba as escadas.", 3.0, (100,255,100))
 
     def _disable_barrier(self):
-        """Desativa a barreira visualmente e remove sua hitbox/flag do floor_state."""
         fs = getattr(self, 'floor_state', None)
         if fs is None: return
         try:
@@ -1741,14 +1690,6 @@ class Game:
         except Exception:
             pass
 
-    # ── Rhythm game ───────────────────────────────────────────────────────────
-
-    # ── Beatmap fixo (60s), alinhado ao BPM real da música ──────────────────
-    # rythm.mp3 está em 114 BPM -> 1 batida = 60/114 ≈ 0.5263s.
-    # As notas são geradas em SUBDIVISÕES da batida (1, 1/2, 1/4) para que
-    # caiam sempre em cima do tempo da música, mesmo quando a seção fica
-    # mais difícil/densa. Cada item: (tempo_em_segundos, lane)
-    # onde lane: 0=←  1=↓  2=↑  3=→
     RHYTHM_BPM = 114.0
 
     @classmethod
@@ -1758,10 +1699,6 @@ class Game:
         start_t = beat * 4    # pequeno respiro (4 batidas) antes da primeira seta
 
         def _run(t0, end_t, subdivision, lane_cycle, hold_period=0):
-            """Gera notas a cada `subdivision` batidas a partir de t0.
-            hold_period > 0 → a cada N notas normais, uma hold é inserida.
-            Nunca duas holds seguidas; hold e a nota seguinte são sempre normais.
-            """
             step = beat * subdivision
             hold_dur = round(beat * 1.8, 4)   # duração da hold (1.8 batidas)
             i = 0
@@ -1841,7 +1778,6 @@ class Game:
         self.input.capture_mouse(False)
 
     def _rhythm_abort(self):
-        """Cancela o minigame (ESC) sem completar — volta pro explore."""
         pygame.mixer.music.stop()
         pygame.mixer.music.load(os.path.join(_HERE, "assets", "music", "tower.mp3"))
         pygame.mixer.music.play()
@@ -1860,7 +1796,6 @@ class Game:
         return None
 
     def _trigger_lane_flash(self, lane_idx, color, duration):
-        """Acende o brilho de fundo de uma lane por `duration` segundos."""
         self.rhythm_lane_flash[lane_idx] = [color, duration]
 
     def _rhythm_arrow_press(self, lane_name):
@@ -1868,8 +1803,7 @@ class Game:
         lane = lane_map[lane_name]
         t    = self.rhythm_timer
 
-        # Encontra a nota não resolvida mais próxima no tempo, na mesma lane,
-        # dentro da janela mais permissiva (OK).
+
         best_idx, best_dt = None, None
         for idx, note in enumerate(self.rhythm_notes):
             if note["hit_result"] not in (None,) or note["lane"] != lane:
@@ -1911,7 +1845,6 @@ class Game:
             self._trigger_lane_flash(lane, color, 0.25)
 
     def _rhythm_hold_release(self, lane_idx):
-        """Chamado quando o jogador solta a tecla de uma hold note."""
         hold = self.rhythm_hold_keys.pop(lane_idx, None)
         if hold is None:
             return
@@ -2329,9 +2262,7 @@ class Game:
     # ── Update ────────────────────────────────────────────────────────────────
 
     def _update_emilia_cutscene_timers(self, dt: float):
-        """Avança os timers que controlam as pausas visuais entre as fases
-        da cutscene da Emilia (waking → idle) e dispara as histórias seguintes
-        automaticamente."""
+  
         if getattr(self, '_emilia_waking_pending', False):
             self._emilia_waking_timer += dt
             if self._emilia_waking_timer >= getattr(self, '_emilia_waking_duration', 3.5):
@@ -2379,10 +2310,7 @@ class Game:
             self.beatrice_node.rotation[1] = self.player_node.rotation[1]
             if self.beatrice_timer <= 0.0:
                 self.beatrice_node.visible = False
-        # Avança o clipe de idle da Beatrice em loop contínuo sempre que ela
-        # estiver visível em cena — independente do timer acima, então se o
-        # timer/gatilho de visibilidade mudar no futuro a animação continua
-        # tocando corretamente enquanto bnode.visible for True.
+
         if self.beatrice_anim is not None and self.beatrice_node is not None and self.beatrice_node.visible:
             self.beatrice_anim.update(dt)
 
@@ -2663,8 +2591,6 @@ class Game:
             self.void_fall_timer = None
 
     def _rebuild_puzzle_keep_state(self):
-        """Volta do parkour pro puzzle mantendo progresso."""
-        # Salva estado de TUDO que precisa persistir
         puzzle_solved = self.floor_state.puzzle_solved
         stair_locked = self.floor_state.stair_locked
         parkour_snapshot = getattr(self, "_parkour_snapshot", None)
@@ -2861,7 +2787,6 @@ class Game:
         self._update_player_visuals()
             
     def _update_notifications(self):
-        """Atualiza as notificações contextuais baseadas na posição do jogador e estado do andar."""
         p = self.player
         pz = p.world_pos[2]
         px = p.world_pos[0]
@@ -3262,7 +3187,6 @@ class Game:
                             "shadow": True
                         })
     def _update_push_box(self, dt):
-        """Física simples da caixa empurrável no andar de puzzle."""
         if self.current_floor != self.FLOOR_PUZZLE:
             return
         pb = getattr(self.floor_state, "push_box", None)
@@ -3329,7 +3253,6 @@ class Game:
                 #self.hud.add_popup("Botão ativado! Fragmento liberado!", 2.5, (180, 255, 120))
 
     def _attempt_parry(self):
-        """Tenta fazer parry em todos os inimigos E no boss."""
         parried_any = False
         
         # Verifica inimigos normais
@@ -3656,9 +3579,7 @@ class Game:
         boss.world_pos[0] = max(-_bound_hw, min(_bound_hw, boss.world_pos[0]))
         boss.world_pos[2] = max(-_bound_hd, min(_bound_hd, boss.world_pos[2]))
 
-        # ── Colisão com objetos do cenário (pilar, plataformas laterais,
-        # plataforma da Emilia, etc.) — mesma física aplicada ao player,
-        # pra ele parar de atravessar esses objetos. ──
+   
         for _hitbox in self.floor_state.obstacles:
             _hitbox.resolve_player_collision(boss)
 
@@ -3903,10 +3824,7 @@ class Game:
         # ── Buracos negros ──
         _bh_phase = getattr(boss, 'phase', 1)
         if getattr(boss, '_enrage_cleanup_done', False):
-            # Depois que o enrage (fase 5) já terminou, NUNCA mais usa a
-            # cadência de fase 5 pro buraco negro, mesmo que boss.phase
-            # "reboteie" de volta pra 5 (ex: recalculado a partir do HP,
-            # que fica travado em 1 após o enrage). Trava no máximo fase 4.
+
             _bh_phase = min(_bh_phase, 4)
         _enrage_active = getattr(boss, '_enrage_triggered', False) and not getattr(boss, '_enrage_cleanup_done', False)
         if _bh_phase >= 3 and not getattr(boss, '_dying', False) and not _enrage_active:
@@ -4022,9 +3940,7 @@ class Game:
                 anim.play("death")
                 boss._anim_state = "death"
 
-        # ── SFX de hit ao terminar QUALQUER janela de invencibilidade ──
-        # Cobre tanto a invencibilidade da fase 4 (controlada dentro da
-        # própria classe Boss) quanto a da fase 5/enrage (controlada aqui).
+
         _inv_now  = getattr(boss, 'invincible_active', False)
         _inv_prev = getattr(boss, '_prev_invincible_active', False)
         if _inv_prev and not _inv_now:
@@ -4032,11 +3948,7 @@ class Game:
         boss._prev_invincible_active = _inv_now
 
     def _clamp_boss_damage(self, boss, damage):
-        """Clampeia dano no boss nos checkpoints de fase.
-        Checkpoints: 60% (fase 2), 40% (fase 3), 10% (fase 4/furia), 1 HP (enrage).
-        Em cada limiar trava o dano por 2s antes de liberar a proxima fase.
-        Fase 4+ (pos-invencibilidade): dano minimo 4, checkpoint de 10% ignorado.
-        """
+
         if getattr(boss, '_dying', False): return 0
         if getattr(boss, '_enrage_timer', 0.0) > 0.0: return 0
         if getattr(boss, 'invincible_active', False): return 0
@@ -4086,7 +3998,6 @@ class Game:
         return damage
 
     def _update_boss_checkpoints(self, boss, dt):
-        """Decrementa timers de freeze e libera o proximo checkpoint."""
         CHECKPOINTS = [
             ('_cp_60_freeze', '_cp_60_done'),
             ('_cp_40_freeze', '_cp_40_done'),
@@ -4129,7 +4040,6 @@ class Game:
         self.hud.draw_rect(0, 0, self.screen_w, self.screen_h, (0.15, 0.0, 0.25), intensity)
 
     def _spawn_shoot_projectile(self, boss):
-        """Cria um projétil que viaja da posição do boss até o player."""
         import math as _m
         from src.engine.mesh  import make_sphere, ProceduralMesh
         from src.engine.scene import SceneNode
@@ -4158,7 +4068,6 @@ class Game:
         self._shoot_projectiles.append(proj)
 
     def _update_projectiles(self, dt):
-        """Move projéteis e detecta colisão com o player."""
         import math as _m
         alive = []
         for proj in getattr(self, "_shoot_projectiles", []):
@@ -4266,9 +4175,7 @@ class Game:
         self._render_skinned(self.player_node, self.player_skinned_mesh, self.player_anim)
 
     def _render_skinned_beatrice(self):
-        # Só desenha enquanto ela estiver visível (mesma flag usada por
-        # _show_beatrice / _update_game) — evita custo de draw quando não
-        # está em cena, igual ao comportamento do node antigo (.obj/esfera).
+
         if self.beatrice_anim is None or self.beatrice_skinned_mesh is None:
             return
         if self.beatrice_node is None or not self.beatrice_node.visible:
@@ -4276,7 +4183,6 @@ class Game:
         self._render_skinned(self.beatrice_node, self.beatrice_skinned_mesh, self.beatrice_anim)
 
     def _render_skinned_emilia(self):
-        """Desenha a Emilia inconsciente na sala do boss (skinned mesh)."""
         emilia_anim  = getattr(self, 'emilia_anim',  None)
         emilia_mesh  = getattr(self, 'emilia_skinned_mesh', None)
         emilia_node  = getattr(self.floor_state, 'emilia_node', None)
@@ -4903,7 +4809,6 @@ class Game:
                             lane_w - 14, note_h - 6,
                             (1.0, 0.97, 0.70), alpha=0.70)
     def _draw_tower_silhouette(self, hud, tx, ground_y, segments, color=(0.035, 0.03, 0.07)):
-        """Desenha uma torre em silhueta a partir de segmentos (largura, altura)."""
         y_cur = ground_y
         for w, h in segments:
             y_cur -= h
@@ -4911,7 +4816,6 @@ class Game:
         return y_cur
 
     def _draw_menu_footer(self, hud, sw, sh):
-        """Barra inferior com citação e indicadores dos andares."""
         bar_h = 56
         bar_y = sh - bar_h
         hud.draw_gradient_rect(0, bar_y - 24, sw, bar_h + 24,
@@ -4944,11 +4848,7 @@ class Game:
                           bold=True, center=True)
 
     def _draw_menu_background(self, hud):
-        """
-        Tela de título: céu noturno em gradiente contínuo, campo de estrelas com
-        profundidade, lua/orbe arcano, silhueta de torre ao fundo e título em
-        estandarte dourado — clima de fantasia medieval / Re:Zero.
-        """
+
         sw, sh = self.screen_w, self.screen_h
         t = self._menu_anim_t
 

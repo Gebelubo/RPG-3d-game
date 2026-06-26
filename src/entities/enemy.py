@@ -73,12 +73,6 @@ class Enemy:
         self.attack_cooldown = max(0.0, self.attack_cooldown - dt)
 
     def try_attack(self, player_stats, player_pos, attack_type="light") -> int:
-        """
-        Tenta atacar com o tipo especificado.
-        player_pos: posição do player (lista [x, y, z])
-        attack_type: "light" ou "heavy"
-        Retorna o dano ou 0 se não atacou.
-        """
         if self.dead or self.attack_cooldown > 0:
             return 0
         
@@ -145,7 +139,6 @@ class Enemy:
             return 0
     
     def execute_windup_attack(self, player_stats) -> int:
-        """Executa o ataque pesado após o wind-up terminar."""
         if self.dead:
             return 0
         shielded = getattr(player_stats, 'is_shielded', False)
@@ -193,7 +186,6 @@ class Enemy:
         return dmg
     
     def attempt_parry(self) -> bool:
-        """Tenta fazer parry. Retorna True se bem sucedido."""
         if not self.parry_window_open:
             return False
         
@@ -204,7 +196,6 @@ class Enemy:
         return True
     
     def finish_attack_animation(self):
-        """Finaliza a animação de ataque."""
         self.is_attacking = False
         self.attack_timer = 0.0
         self.current_attack_type = None

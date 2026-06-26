@@ -24,7 +24,6 @@ from src.hud.utils import (
 
 
 def _c(rgb):
-    """Converte (R, G, B) 0-255 para floats 0-1 usados pelo shader."""
     return (rgb[0] / 255.0, rgb[1] / 255.0, rgb[2] / 255.0)
 
 
@@ -128,10 +127,6 @@ class HUD:
 
     def draw_rect(self, x: int, y: int, w: int, h: int,
                   color=(0.1, 0.1, 0.2), alpha: float = 1.0):
-        """
-        Desenha um retângulo colorido (preenchimento liso).
-        alpha=1.0 opaco, alpha=0.0 transparente.
-        """
         glEnable(GL_BLEND)
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
         self._setup(alpha)
@@ -145,7 +140,6 @@ class HUD:
         _free_quad(vao, vbo, ibo)
 
     def draw_poly(self, points, color=(0.1, 0.1, 0.2), alpha: float = 1.0):
-        """Desenha um polígono convexo preenchido (gemas, faixas, medalhões...)."""
         if len(points) < 3:
             return
         glEnable(GL_BLEND)
@@ -162,7 +156,6 @@ class HUD:
 
     def draw_gradient_rect(self, x, y, w, h, top_color, bottom_color,
                            alpha: float = 1.0, steps: int = 8):
-        """Retângulo com gradiente vertical, aproximado por faixas horizontais."""
         steps = max(2, int(steps))
         glEnable(GL_BLEND)
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
@@ -183,7 +176,6 @@ class HUD:
 
 
     def draw_gem(self, cx, cy, r, color, sides=4, rotation=math.pi / 4, highlight=True):
-        """Gema/rebite decorativo — usado em cantos de painéis e pontas de barras."""
         pts = _ngon_points(cx, cy, r, sides=sides, rotation=rotation)
         self.draw_poly(pts, color)
         if highlight:
@@ -192,7 +184,6 @@ class HUD:
             self.draw_poly(hl_pts, _lighten(color, 0.35), 0.8)
 
     def draw_medallion(self, cx, cy, r, color, ring_color=None, alpha: float = 1.0):
-        """Emblema circular com anel — usado em ícones de magia/item/habilidade e nível."""
         ring_color = ring_color or _darken(color, 0.35)
         self.draw_poly(_ngon_points(cx, cy, r + 3, sides=14), ring_color, alpha)
         self.draw_poly(_ngon_points(cx, cy, r, sides=14), color, alpha)
@@ -202,7 +193,6 @@ class HUD:
     def draw_frame(self, x, y, w, h, bg_color=PARCHMENT_DK_F, border_color=GOLD_F,
                    border_dark=GOLD_DARK_F, thickness=3, corner_gems=True,
                    gem_color=BRONZE_F, alpha: float = 1.0):
-        """Painel com moldura de metal + friso dourado + fundo em gradiente."""
         t = thickness
         self.draw_rect(x - t - 2, y - t - 2, w + (t + 2) * 2, h + (t + 2) * 2,
                        IRON_DARK_F, alpha)
@@ -219,7 +209,6 @@ class HUD:
     def draw_banner(self, text, cx, y, w=200, h=26, base_color=CRIMSON_F,
                     edge_color=CRIMSON_DK_F, text_color=(255, 230, 190),
                     text_size=14, notch=14, alpha: float = 1.0):
-        """Faixa/estandarte com pontas em V — usado como título de painéis."""
         x = cx - w / 2
         outer = _banner_points(x, y, w, h, notch=notch)
         self.draw_poly(outer, edge_color, alpha)
@@ -231,10 +220,7 @@ class HUD:
 
     def draw_bar(self, x: int, y: int, w: int, h: int, fill: float,
                  bar_color=(0.8, 0.1, 0.1), bg_color=(0.2, 0.2, 0.2)):
-        """
-        Medidor de status estilo medieval: moldura de ferro/bronze, preenchimento
-        em gradiente, brilho superior e rebites nas pontas.
-        """
+
         glEnable(GL_BLEND)
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
         self._setup()
@@ -382,7 +368,10 @@ class HUD:
                 self.draw_rect(px + 4, iy - 4, pw - 8, 38, (1, 1, 1), alpha=0.04)
             self.draw_medallion(px + 20, iy + 12, 14, ic)
             self.draw_text(sp.name,            px + 40, iy-2,  14, (225, 230, 255))
-            self.draw_text(f"{sp.mp_cost} MP", px + 40, iy + 14, 11, (135, 175, 255))
+            if sp.name == "invisible_providence":
+                self.draw_text(f"{sp.mp_cost} MP", px + 40, iy + 14, 11, (135, 175, 255))
+            else:
+                self.draw_text(f"{sp.mp_cost} MP", px + 40, iy + 14, 11, (135, 175, 255))
             self.draw_text(f"[{i + 1}]",       px + 210, iy + 8, 13, (230, 210, 130), bold=True)
 
     def _draw_item_submenu(self):
@@ -520,7 +509,6 @@ class HUD:
 
 
     def cleanup(self):
-        """Libera todas as texturas em cache. Chamar ao fechar o jogo."""
         clear_text_cache()
 
     def draw_image(self, texture,
