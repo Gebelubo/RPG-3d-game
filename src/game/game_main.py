@@ -643,11 +643,6 @@ class Game:
         self.scene.add(barrier_node)
         self.floor_state.barrier_node   = barrier_node
 
-        #self.hud.add_popup("Junte os fragmentos espalhados pela sala!", 3.0, (200,220,255))
-        #self.hud.add_popup("[Z] perto de cada fragmento para encaixá-lo no quadro", 4.0, (180,180,220))
-        #self.hud.add_popup("Um fragmento está numa sala abaixo — volte pela entrada sul!", 5.0, (180,200,255))
-        #self.hud.add_popup("Heartless guardam outro fragmento — derrote-os primeiro!", 5.5, (255,180,100))
-        #self.hud.add_popup("Empurre a caixa [Z] até o botão verde e suba nela!", 6.0, (180,255,160))
         dv, di = make_cube(1.0)
         dm = self._helper.make_box_mesh("door",3.0,4.0,0.3, color=(0.35,0.22,0.10), ka=0.2,kd=0.7,ks=0.3,shin=24)
         door_node = SceneNode("door", mesh=dm, position=(0, 4.0,-15), scale=(1,1,1), texture=door_tex)
@@ -789,10 +784,6 @@ class Game:
         self.player.on_ground = True
         self.player_node.position = list(self.player.world_pos)
 
-        #self.hud.add_popup("Sub-sala de parkour!", 2.5, (180, 200, 255))
-        #self.hud.add_popup("Cuidado com o void — cair é morte!", 3.0, (255, 100, 100))
-        #self.hud.add_popup("Pule pelas plataformas e pegue o fragmento!", 3.5, (200, 220, 255))
-
     def _build_floor_aerial(self):
         pygame.mixer.music.stop()
         pygame.mixer.music.load(os.path.join(_HERE, "assets", "music", "combat.mp3"))
@@ -827,9 +818,6 @@ class Game:
         barrier_node = SceneNode("barrier", mesh=bm, position=(0,ROOM_H/2-0.5,-9), texture=barrier_text, transparent=True, scale=(1.2, 1.2, 1.2))
         self.scene.add(barrier_node)
         self.floor_state.barrier_node   = barrier_node
-
-        #self.hud.add_popup("Cuidado com os Heartless voadores!", 3.0, (255,200,100))
-        #self.hud.add_popup("[Espaço] pra pular e alcançá-los!", 4.0, (200,200,255))
 
     def _build_floor_rhythm(self):
         pygame.mixer.music.stop()
@@ -872,9 +860,6 @@ class Game:
 
         for cx, cz in [(-8.0,-2.0),(-8.0,2.0),(8.0,-2.0),(8.0,2.0)]:
             self._helper._add_tower_deco(self.scene, self.floor_state, "crystal", position=(cx, 0.0, cz), scale=(1.0,1.0,1.0), collision_radius=0.9)
-
-        #self.hud.add_popup("Um obelisco antigo brilha no centro da sala...", 4.0, (100,255,200))
-        #self.hud.add_popup("[E/Enter] perto dele para começar o ritual rítmico", 4.5, (200,255,220))
 
     def _build_floor_gauntlet(self):
         pygame.mixer.music.stop()
@@ -926,8 +911,6 @@ class Game:
         door_node = SceneNode("door", mesh=dm, position=(0, 4.0,-15), scale=(1,1,1), texture=door_tex)
         self.scene.add(door_node)
         self.floor_state.door_node = door_node
-
-        #self.hud.add_popup("Corredor Final! Sobreviva!", 3.0, (255,100,100))
 
     def _build_floor_rest(self):
         pygame.mixer.music.stop()
@@ -1358,7 +1341,6 @@ class Game:
             self._helper.save_game(next_floor, self.player)
             self._build_floor(next_floor)
         self._start_fade(_do_transition, duration=0.35)
-        #self.hud.add_popup("Subindo para o próximo andar...", 2.0, (200,255,200))
         self.curr_mp = self.player.stats.mp
 
     def _start_fade(self, callback, duration=0.35):
@@ -1383,7 +1365,6 @@ class Game:
                 pygame.mixer.music.stop()
                 pygame.mixer.music.load(os.path.join(_HERE, "assets", "music", "tower.mp3"))
                 pygame.mixer.music.play()
-                #self.hud.add_popup("A barreira caiu! Suba as escadas.", 3.0, (200,255,200))
 
         elif self.current_floor == self.FLOOR_AERIAL:
             if not alive:
@@ -1393,7 +1374,6 @@ class Game:
                 pygame.mixer.music.stop()
                 pygame.mixer.music.load(os.path.join(_HERE, "assets", "music", "tower.mp3"))
                 pygame.mixer.music.play()
-                #self.hud.add_popup("Todos derrotados! Suba as escadas.", 3.0, (200,255,200))
 
         elif self.current_floor == self.FLOOR_GAUNTLET:
             if not alive:
@@ -1404,7 +1384,6 @@ class Game:
                     fs.enemies = next_wave
                     for e, n in next_wave:
                         n.visible = True; e.dead = False
-                    #self.hud.add_popup("Próxima onda!", 2.0, (255,180,100))
                 else:
                     fs.stair_locked = False
                     # desativa completamente a barreira (visual + física)
@@ -1412,7 +1391,6 @@ class Game:
                     pygame.mixer.music.stop()
                     pygame.mixer.music.load(os.path.join(_HERE, "assets", "music", "tower.mp3"))
                     pygame.mixer.music.play()
-                    #self.hud.add_popup("Corredor limpo! Avance pela porta.", 3.0, (200,255,200))
 
         elif self.current_floor == self.FLOOR_BOSS:
             pass  # cutscene é disparada pelo _update_boss após animação de morte
@@ -1572,8 +1550,7 @@ class Game:
                 pb["velocity"][0] += (dx / norm) * IMPULSE
                 pb["velocity"][1] += (dz / norm) * IMPULSE
                 pb["hit_count"]   += 1
-                #self.hud.add_popup(f"Caixa empurrada! (soco {pb['hit_count']})",
-                 #                  0.7, (200, 200, 120))
+
                 return
 
         # ── Coletar fragmento ─────────────────────────────────────────────
@@ -1593,9 +1570,7 @@ class Game:
             # Peça 0 → só coleta na sub-sala de parkour
             if idx == 0:
                 if not getattr(fs, "in_parkour_room", False):
-                    #self.hud.add_popup(
-                     #   "Esse fragmento está numa sala abaixo — volte pela entrada sul!",
-                      #  2.0, (180, 200, 255))
+
                     return
                 piece["collected"] = True
                 piece["scatter_pos"] = piece["mural_pos"]
@@ -1603,28 +1578,22 @@ class Game:
                 if getattr(self, '_parkour_snapshot', None) is not None:
                     self._parkour_snapshot["puzzle_state"][0] = (True, piece["scatter_pos"])
                 self._check_puzzle()
-                #self.hud.add_popup("Fragmento coletado! Volte para o quadro do puzzle.", 2.5, (200, 255, 200))
                 return
 
             # Peça 2 → bloqueada pelo botão
             if idx == 2:
                 if pb and not pb["activated"]:
-                    #self.hud.add_popup("Empurre a caixa até o botão verde e suba nela!",
-                    #                   1.5, (200, 255, 160))
                     return
 
             # Peça 3 → bloqueada pelos guardas
             if idx == 3:
                 guards = getattr(fs, "puzzle_guards", [])
                 if any(not ge.dead for ge, _gn in guards):
-                    #self.hud.add_popup("Guardas vivos! Derrote os Heartless primeiro.",
-                    #                   1.8, (255, 120, 80))
                     return
                 
             piece["collected"] = True
             piece["node"].position = list(piece["mural_pos"])
             piece["node"].visible  = True
-            #self.hud.add_popup("Fragmento encaixado!", 1.5, (200, 200, 100))
             self._check_puzzle()
             return
 
@@ -1634,7 +1603,6 @@ class Game:
             self.floor_state.stair_locked  = False
             # desativa completamente a barreira (visual + física)
             self._disable_barrier()
-            #self.hud.add_popup("Quadro completo! Suba as escadas.", 3.0, (100,255,100))
 
     def _disable_barrier(self):
         fs = getattr(self, 'floor_state', None)
@@ -2042,8 +2010,6 @@ class Game:
                 for ep in [(-3,0.5,-5),(3,0.5,-5),(0,0.5,-3)]:
                     e, n = self._helper._spawn_heartless(self.scene, ep, level=2)
                     e.respawns_left = 0; self.floor_state.enemies.append((e,n))
-                #self.hud.add_popup("TUTORIAL DE COMBATE!", 2.5, (255,200,80))
-                #self.hud.add_popup("[Z] para atacar os Heartless!", 3.5, (200,200,255))
 
         # Volta da sub-sala de parkour (entrada norte, apenas no puzzle)
         if (self.current_floor == self.FLOOR_PUZZLE
@@ -2149,7 +2115,6 @@ class Game:
             self.player.stats.shield_time = 10.0; self._show_beatrice()
             if self.player_anim is not None:
                 self.player_anim.play("beatrice", restart_if_same=True)
-            #self.hud.add_popup("EMT ativado! Protegido por 10s", 2.0, (80,220,255)); return
         # ── Procura alvo mais próximo (pode não existir nenhum) ──────────────
         nearest = None; nearest_dist = 999.0
         for e, node in self.floor_state.enemies:
@@ -2573,7 +2538,6 @@ class Game:
             self.void_fall_timer = (self.void_fall_timer or 0.0) + dt
             if self.void_fall_timer >= 1.5:
                 self.void_fall_timer = None
-                #self.hud.add_popup("Caiu no void!", 1.5, (255, 60, 60))
                 self._trigger_death()
         else:
             self.void_fall_timer = None
@@ -2662,7 +2626,6 @@ class Game:
         self.player.world_pos = [0.0, 0.8, 12.0]
         self.player.velocity = [0.0, 0.0, 0.0]
         self.player.on_ground = True
-        #self.hud.add_popup("De volta ao puzzle!", 2.0, (200, 220, 255))
 
     def _resolve_obstacle_collisions(self):
 
