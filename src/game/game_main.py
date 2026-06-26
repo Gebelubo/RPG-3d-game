@@ -166,6 +166,7 @@ class Game:
         self._fade_build_pending = False
         self.notifications = []
         self.max_phase = 0
+        self.first_msg = False
         self._push_title_menu()
 
     # ── Cena base ─────────────────────────────────────────────────────────────
@@ -3773,6 +3774,11 @@ class Game:
             self.sounds.marluxia_fase4.play()
             self.hud.add_popup("Tudo retorna ao esquecimento", 2.5, (255, 80, 0))
 
+        if _cur_phase==4 and self.max_phase==4 and boss.invincible_active==False:
+            if not self.first_msg:
+                self.hud.add_popup("Lembre-se sempre, Natsuki Subaru", 2.5, (255, 160, 0))
+                self.first_msg=True
+
         # ── Fase 5: Enrage ──
         if not getattr(boss, '_enrage_triggered', False) and boss.stats.hp <= 1 and not boss.dead:
             boss._enrage_triggered = True
@@ -3801,9 +3807,7 @@ class Game:
         elif getattr(boss, '_enrage_cleanup_done', False):
             # Garante que a invencibilidade nunca volta após o enrage terminar
             boss.invincible_active = False
-            if _cur_phase==4:
-                    self.hud.add_popup("Lembre-se sempre, Natsuki Subaru", 2.5, (255, 160, 0))
-                    
+
         if getattr(boss, '_enrage_triggered', False) and getattr(boss, '_enrage_timer', 1.0) <= 0.0 \
                 and not getattr(boss, '_enrage_cleanup_done', False):
             self.hud.add_popup("É fácil desistir, mas isso não combina com você!", 3.0, (255, 0, 80))

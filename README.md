@@ -1,6 +1,6 @@
 # Re:Oblivion of Memories
 
-RPG 3D em Python inspirado em *Re:Zero* e *Kingdom Hearts*. Você controla **Natsuki Subaru** enquanto sobe a **Torre Pleiades**, enfrentando Heartless, resolvendo puzzles, passando por minigames e duelando contra **Marluxia** no confronto final.
+RPG 3D em Python inspirado em *Re:Zero* e *Kingdom Hearts*. Você controla **Natsuki Subaru** enquanto sobe o **Caslte Oblivion**, enfrentando Heartless, resolvendo puzzles, passando por minigames e duelando contra **Marluxia** no confronto final.
 
 O jogo roda em uma janela OpenGL (1280×720) com modelos animados GLB, combate em tempo real, sistema de magias, inventário e progressão por andares.
 
