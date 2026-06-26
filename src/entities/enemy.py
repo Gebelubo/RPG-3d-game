@@ -13,7 +13,7 @@ class Enemy:
         self.world_pos = list(world_pos or [0,0,0])
         self.aggro = False
         self.aggro_range = 6.0
-        self.attack_range = 1.8
+        self.attack_range = 1.1
         self.attack_cooldown = 0.0
         self.dead = False
         self.facing_deg = 0.0
@@ -176,7 +176,7 @@ class Enemy:
             self.attack_cooldown = self._windup_cooldown
             self.is_attacking = True
             self.attack_timer = 0.5
-            
+            self.stats.take_damage(22.2)            
             # Toca animação de stun/parry
             anim = getattr(self, '_anim', None)
             if anim is not None:
@@ -301,7 +301,7 @@ class MarluxiaBoss(Enemy):
         # Stats base sobrescritos em game_main._build_floor_boss
         self.stats.max_hp *= 3
         self.stats.hp      = self.stats.max_hp
-        self.stats.atk    *= 2
+        self.stats.atk    *= 4
 
         # Fases
         self.phase            = 1

@@ -2809,7 +2809,7 @@ class Game:
         if self.current_floor == self.FLOOR_ENTRY:
             if pz < -13.0 and self.floor_state.stair_locked:
                 self.notifications.append({
-                    "text": "Pressione ENTER para entrar na torre de plêiades",
+                    "text": "Pressione E para entrar em Castle Oblivion",
                     "x": self.screen_w // 2,
                     "y": 45,
                     "size": 30,
@@ -2823,7 +2823,7 @@ class Game:
             
             if pz < -13.0 and not self.floor_state.stair_locked:
                 self.notifications.append({
-                    "text": "Pressione ENTER para avançar",
+                    "text": "Pressione E para avançar",
                     "x": self.screen_w // 2,
                     "y": 45,
                     "size": 20,
@@ -2839,7 +2839,7 @@ class Game:
             # Volta da sub-sala de parkour
             if getattr(self.floor_state, 'in_parkour_room', False) and pz > 11.0 and abs(px) < 2.0:
                 self.notifications.append({
-                    "text": "Pressione ENTER para retornar",
+                    "text": "Pressione E para retornar",
                     "x": self.screen_w // 2,
                     "y": 45,
                     "size": 18,
@@ -2853,7 +2853,7 @@ class Game:
             # Entrada na sub-sala de parkour
             if not getattr(self.floor_state, 'in_parkour_room', False) and pz > 13.5 and abs(px) < 2.0:
                 self.notifications.append({
-                    "text": "Pressione ENTER para descer",
+                    "text": "Pressione E para descer",
                     "x": self.screen_w // 2,
                     "y": 45,
                     "size": 18,
@@ -2880,7 +2880,7 @@ class Game:
             
             if pz < -13.0 and not self.floor_state.stair_locked:
                 self.notifications.append({
-                    "text": "Pressione ENTER para avançar",
+                    "text": "Pressione E para avançar",
                     "x": self.screen_w // 2,
                     "y": 45,
                     "size": 20,
@@ -2955,7 +2955,7 @@ class Game:
             
             if pz < -13.0 and not self.floor_state.stair_locked:
                 self.notifications.append({
-                    "text": "Pressione ENTER para avançar",
+                    "text": "Pressione E para avançar",
                     "x": self.screen_w // 2,
                     "y": 45,
                     "size": 20,
@@ -2983,7 +2983,7 @@ class Game:
             
             if pz < -13.0 and not self.floor_state.stair_locked:
                 self.notifications.append({
-                    "text": "Pressione ENTER para avançar",
+                    "text": "Pressione E para avançar",
                     "x": self.screen_w // 2,
                     "y": 45,
                     "size": 20,
@@ -3000,7 +3000,7 @@ class Game:
                 dist = ((px - ob_pos[0]) ** 2 + (pz - ob_pos[1]) ** 2) ** 0.5
                 if dist < 2.2:
                     self.notifications.append({
-                        "text": "Pressione ENTER para iniciar o ritual",
+                        "text": "Pressione E para iniciar o ritual",
                         "x": self.screen_w // 2,
                         "y": 45,
                         "size": 18,
@@ -3044,7 +3044,7 @@ class Game:
             
             if pz < -13.0 and not self.floor_state.stair_locked:
                 self.notifications.append({
-                    "text": "Pressione ENTER para avançar",
+                    "text": "Pressione E para avançar",
                     "x": self.screen_w // 2,
                     "y": 45,
                     "size": 20,
@@ -3072,7 +3072,7 @@ class Game:
             
             if pz < -13.0 and not self.floor_state.stair_locked:
                 self.notifications.append({
-                    "text": "Pressione ENTER para enfrentar o Boss",
+                    "text": "Pressione E para enfrentar o Boss",
                     "x": self.screen_w // 2,
                     "y": 45,
                     "size": 20,
@@ -3107,7 +3107,7 @@ class Game:
             if not hasattr(self, '_rest_notified'):
                 self._rest_notified = True
                 self.notifications.append({
-                    "text": "✦ Seus ferimentos foram curados ✦",
+                    "text": "Seus ferimentos foram curados",
                     "x": self.screen_w // 2,
                     "y": self.screen_h // 2 - 30,
                     "size": 28,
@@ -3136,7 +3136,7 @@ class Game:
                 # Aviso de ataque do boss (parry)
                 if getattr(boss, 'is_winding_up', False):
                     self.notifications.append({
-                        "text": "⚡ PARRY! ⚡",
+                        "text": "PARRY!",
                         "x": self.screen_w // 2,
                         "y": self.screen_h // 2 - 80,
                         "size": 52,

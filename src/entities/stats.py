@@ -48,10 +48,12 @@ class Stats:
         return False
 
     def _level_up(self):
+        if self.level==5:
+            return
         self.level += 1
         self.xp -= self.xp_next
         self.xp_next = int(self.xp_next * 1.5)
-        self.max_hp += 20; self.max_mp += 10
-        self.hp = self.max_hp; self.mp = self.max_mp
+        self.max_hp += 40; self.max_mp += 20
+        self.hp = self.max_hp; 
         self.atk += 3; self.defense += 2; self.spd += 1
 
