@@ -62,20 +62,22 @@ class SceneNode:
                  mesh:     Mesh | None  = None,
                  texture:  Texture | None = None,
                  position: tuple = (0, 0, 0),
-                 rotation: tuple = (0, 0, 0),   # (rx, ry, rz) degrees
+                 rotation: tuple = (0, 0, 0),
                  scale:    tuple = (1, 1, 1),
-                 visible:  bool  = True):
+                 visible:  bool  = True,
+                 transparent: bool = False):  # ← NOVO
 
         self.name     = name
         self.mesh     = mesh
         self.texture  = texture
         self.position = list(position)
-        self.rotation = list(rotation)   # Euler YXZ
+        self.rotation = list(rotation)
         self.scale    = list(scale)
         self.visible  = visible
+        self.transparent = transparent  # ← NOVO
 
         self.children: list["SceneNode"] = []
-        self._animator = None            # callable(node, dt)
+        self._animator = None
 
     # ── Transform ─────────────────────────────────────────────────────────────
 
@@ -107,7 +109,6 @@ class SceneNode:
     # ── Draw ──────────────────────────────────────────────────────────────────
 
     def draw(self, shader: ShaderProgram, parent_model: np.ndarray | None = None):
-
         if not self.visible:
             return
 
@@ -117,16 +118,20 @@ class SceneNode:
             shader.set_mat4("uModel", model)
             shader.set_mat3("uNormalMatrix", mat3_normal_matrix(model))
 
-            # Texture or solid colour
             if self.texture:
                 self.texture.bind(0)
                 shader.set_bool("uUseTexture", True)
                 shader.set_int("uTexture", 0)
+                
+                # ── HABILITA BLENDING SE TRANSPARENTE ──
+                if self.transparent:
+                    from OpenGL.GL import glEnable, glBlendFunc, GL_BLEND, GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA
+                    glEnable(GL_BLEND)
+                    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
             else:
                 shader.set_bool("uUseTexture", False)
                 shader.set_vec3("uBaseColor", self.mesh.base_color)
 
-            # Phong material
             shader.set_float("uAmbientStrength",  self.mesh.ka)
             shader.set_float("uDiffuseStrength",  self.mesh.kd)
             shader.set_float("uSpecularStrength", self.mesh.ks)
@@ -135,11 +140,13 @@ class SceneNode:
             self.mesh.draw()
 
             if self.texture:
+                if self.transparent:
+                    from OpenGL.GL import glDisable, GL_BLEND
+                    glDisable(GL_BLEND)
                 self.texture.unbind()
 
         for child in self.children:
             child.draw(shader, model)
-
     # ── Cleanup ───────────────────────────────────────────────────────────────
 
     def cleanup(self):

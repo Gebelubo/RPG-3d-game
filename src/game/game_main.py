@@ -472,7 +472,8 @@ class Game:
         # Barreira mágica (inicialmente invisível até abrir a porta)
         bv, bi = make_cube(1.0)
         bm = self._helper.make_box_mesh("barrier",ROOM_W-2,ROOM_H-1,0.2, color=(0.2,0.1,0.8))
-        barrier_node = SceneNode("barrier", mesh=bm, position=(0,ROOM_H/2-0.5,-9.0))
+        barrier_text = Texture(os.path.join(_HERE, "assets", "images", "plasma.jpg"))
+        barrier_node = SceneNode("barrier", mesh=bm, position=(0,ROOM_H/2-0.5,-9.0), texture=barrier_text, transparent=True, scale=(1.2, 1.2, 1.2))
         barrier_node.visible = False
         self.scene.add(barrier_node)
         self.floor_state.barrier_node   = barrier_node
@@ -525,6 +526,8 @@ class Game:
             mesh=ProceduralMesh("puzzle_backing", bv, bi,
                 base_color=(0.05,0.05,0.08), ka=0.5, kd=0.3, ks=0.0, shininess=1),
             position=(frame_cx, frame_cy, -8.91), rotation=(90,0,0)))
+        
+        
 
         self._helper._add_tower_deco(self.scene, self.floor_state, "platform",
                         position=(7.0, 1.0, 0.0), scale=(0.8, 0.8, 0.8),
@@ -628,10 +631,14 @@ class Game:
         }
 
         # ── Portal para sub-sala (parede sul) ─────────────────────────────
+        try:
+            door_tex = Texture(os.path.join(_HERE, "assets", "models", "tower", "doorwood.jpeg"))
+        except Exception:
+            door_tex = None
         portal_mesh = self._helper.make_box_mesh("parkour_portal", 2.5, 3.0, 0.3,
                                     color=(0.2, 0.3, 0.6))
         portal_node = SceneNode("parkour_portal", mesh=portal_mesh,
-                                position=(0, 1.5, 14.5))
+                                position=(0, 1.5, 14.5), texture=door_tex)
         self.scene.add(portal_node)
         self.floor_state.parkour_portal_node = portal_node
         # Adiciona uma hitbox física para o portal de entrada da sub-sala
@@ -642,10 +649,11 @@ class Game:
             pass
 
         self._helper._build_stairs(self.scene, self.floor_state)
-        gm = self._helper.make_box_mesh("gate", 3.2, 2.0, 0.3, color=(0.5,0.4,0.1))
-        gate_node = SceneNode("gate", mesh=gm, position=(0,1.0,-10.5))
-        self.scene.add(gate_node)
-        self.floor_state.barrier_node = gate_node
+        bm = self._helper.make_box_mesh("barrier",ROOM_W-2,ROOM_H-1,0.2, color=(0.2,0.1,0.8))
+        barrier_text = Texture(os.path.join(_HERE, "assets", "images", "plasma.jpg"))
+        barrier_node = SceneNode("barrier", mesh=bm, position=(0,ROOM_H/2-0.5,-9.0), texture=barrier_text, transparent=True, scale=(1.2, 1.2, 1.2))
+        self.scene.add(barrier_node)
+        self.floor_state.barrier_node   = barrier_node
 
         #self.hud.add_popup("Junte os fragmentos espalhados pela sala!", 3.0, (200,220,255))
         #self.hud.add_popup("[Z] perto de cada fragmento para encaixá-lo no quadro", 4.0, (180,180,220))
@@ -655,10 +663,6 @@ class Game:
         # Porta no fundo do corredor (Norte, Z=-15) — permite avançar ao subir as escadas
         dv, di = make_cube(1.0)
         dm = self._helper.make_box_mesh("door",3.0,4.0,0.3, color=(0.35,0.22,0.10), ka=0.2,kd=0.7,ks=0.3,shin=24)
-        try:
-            door_tex = Texture(os.path.join(_HERE, "assets", "models", "tower", "doorwood.jpeg"))
-        except Exception:
-            door_tex = None
         door_node = SceneNode("door", mesh=dm, position=(0, 4.0,-15), scale=(1,1,1), texture=door_tex)
         self.scene.add(door_node)
         self.floor_state.door_node = door_node
@@ -758,9 +762,13 @@ class Game:
             BoxHitbox(x=0, y=3.6, z=-7.2, width=3.5, height=0.4, depth=3.5))
 
         # ── Portal de volta (parede norte/entrada) ─────────────────────
+        try:
+            door_tex = Texture(os.path.join(_HERE, "assets", "models", "tower", "doorwood.jpeg"))
+        except Exception:
+            door_tex = None
         return_portal = self._helper.make_box_mesh("pk_return", 2.5, 3.0, 0.3, color=(0.6, 0.3, 0.2))
         # Recua o portal de retorno para não ficar no centro da plataforma inicial
-        self.scene.add(SceneNode("pk_return", mesh=return_portal, position=(0, 1.5, 14.0)))
+        self.scene.add(SceneNode("pk_return", mesh=return_portal, position=(0, 1.5, 14.0)), texture=door_tex)
         self.floor_state.parkour_return_pos = (0, 0.4, 14.5)
         # Adiciona uma hitbox física para o portal (colisão)
         try:
@@ -829,10 +837,11 @@ class Game:
         self.floor_state.stair_locked = True
 
         self._helper._build_stairs(self.scene, self.floor_state)
-        gm = self._helper.make_box_mesh("gate_a", 3.2, 2.0, 0.3, color=(0.5,0.3,0.1))
-        gate_node = SceneNode("gate_a", mesh=gm, position=(0,1.0,-10.5))
-        self.scene.add(gate_node)
-        self.floor_state.barrier_node = gate_node
+        bm = self._helper.make_box_mesh("barrier",ROOM_W-2,ROOM_H-1,0.2, color=(0.2,0.1,0.8))
+        barrier_text = Texture(os.path.join(_HERE, "assets", "images", "plasma.jpg"))
+        barrier_node = SceneNode("barrier", mesh=bm, position=(0,ROOM_H/2-0.5,-9.0), texture=barrier_text, transparent=True, scale=(1.2, 1.2, 1.2))
+        self.scene.add(barrier_node)
+        self.floor_state.barrier_node   = barrier_node
 
         #self.hud.add_popup("Cuidado com os Heartless voadores!", 3.0, (255,200,100))
         #self.hud.add_popup("[Espaço] pra pular e alcançá-los!", 4.0, (200,200,255))
@@ -858,10 +867,11 @@ class Game:
             pass
 
         self._helper._build_stairs(self.scene, self.floor_state)
-        gm = self._helper.make_box_mesh("gate_r", 3.2, 2.0, 0.3, color=(0.1,0.4,0.5))
-        gate_node = SceneNode("gate_r", mesh=gm, position=(0,1.0,-10.5))
-        self.scene.add(gate_node)
-        self.floor_state.barrier_node = gate_node
+        bm = self._helper.make_box_mesh("barrier",ROOM_W-2,ROOM_H-1,0.2, color=(0.2,0.1,0.8))
+        barrier_text = Texture(os.path.join(_HERE, "assets", "images", "plasma.jpg"))
+        barrier_node = SceneNode("barrier", mesh=bm, position=(0,ROOM_H/2-0.5,-9.0), texture=barrier_text, transparent=True, scale=(1.2, 1.2, 1.2))
+        self.scene.add(barrier_node)
+        self.floor_state.barrier_node   = barrier_node
         self.floor_state.rhythm_done  = False
 
         # Porta no fundo do corredor (Norte, Z=-15) — permite avançar ao subir as escadas
@@ -909,10 +919,11 @@ class Game:
         self._helper._build_stairs(self.scene, self.floor_state)
 
         # Porta/portal visual + referência de barrier_node e hitbox (posicionada como nos outros andares)
-        pm = self._helper.make_box_mesh("portal_gate", 3.2, 2.0, 0.3, color=(0.5,0.1,0.1))
-        gate_node = SceneNode("portal_gate", mesh=pm, position=(0,1.0,-10.5))
-        self.scene.add(gate_node)
-        self.floor_state.barrier_node = gate_node
+        bm = self._helper.make_box_mesh("barrier",ROOM_W-2,ROOM_H-1,0.2, color=(0.2,0.1,0.8))
+        barrier_text = Texture(os.path.join(_HERE, "assets", "images", "plasma.jpg"))
+        barrier_node = SceneNode("barrier", mesh=bm, position=(0,ROOM_H/2-0.5,-9.0), texture=barrier_text, transparent=True, scale=(1.2, 1.2, 1.2))
+        self.scene.add(barrier_node)
+        self.floor_state.barrier_node   = barrier_node
         # adiciona hitbox físico para bloquear até a barreira cair (mesma posição dos outros andares)
         try:
             self.floor_state.obstacles.append(
@@ -2407,7 +2418,6 @@ class Game:
             p.invincible -= dt
 
         if p.stats.shield_time > 0:
-            print(p.stats.shield_time)
             p.stats.shield_time -= dt
 
     def _handle_player_jump(self):
@@ -3133,20 +3143,7 @@ class Game:
         elif self.current_floor == self.FLOOR_BOSS:
             boss = getattr(self.floor_state, 'boss', None)
             if boss is not None and not boss.dead:
-                # Aviso de ataque do boss (parry)
-                if getattr(boss, 'is_winding_up', False):
-                    self.notifications.append({
-                        "text": "PARRY!",
-                        "x": self.screen_w // 2,
-                        "y": self.screen_h // 2 - 80,
-                        "size": 52,
-                        "color": (255, 215, 0),
-                        "bold": True,
-                        "center": True,
-                        "outline": True,
-                        "shadow": True
-                    })
-                
+            
                 # Fase do boss
                 phase = getattr(boss, 'phase', 1)
                 fase_textos = {

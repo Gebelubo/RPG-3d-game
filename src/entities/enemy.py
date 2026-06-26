@@ -23,7 +23,7 @@ class Enemy:
         # ── Sistema de ataques ──
         self.attack_type = "light"  # "light" ou "heavy"
         self.light_attack_damage_mult = 1.0
-        self.heavy_attack_damage_mult = 2.5
+        self.heavy_attack_damage_mult = 4
         self.light_attack_cooldown = 2
         self.heavy_attack_cooldown = 5
         self.heavy_attack_windup = 0.6
@@ -95,6 +95,13 @@ class Enemy:
             return 0
         if attack_type == "heavy" and dist > self.heavy_attack_range:
             return 0
+        shielded = getattr(player_stats, 'is_shielded', False)
+        if shielded:
+            self.attack_cooldown = self.light_attack_cooldown
+            self.is_attacking = False
+            self.attack_timer = 0.0
+            self._pending_damage = 0
+            return 0
         
         # ── ATAQUE LEVE (sem wind-up, sem parry) ──
         if attack_type == "light":
@@ -106,10 +113,6 @@ class Enemy:
             dmg = int(dmg * self.light_attack_damage_mult)
             
             # Verifica escudo
-            shielded = getattr(player_stats, 'is_shielded', False)
-            if shielded:
-                self.attack_cooldown = self.light_attack_cooldown
-                return 0
             self.attack_cooldown = self.light_attack_cooldown
             self.is_attacking = True
             self.attack_timer = 0.3
@@ -162,6 +165,9 @@ class Enemy:
         shielded = getattr(player_stats, 'is_shielded', False)
         if shielded:
             self.attack_cooldown = self.light_attack_cooldown
+            self.is_attacking = False
+            self.attack_timer = 0.0
+            self._pending_damage = 0
             return 0
         
         # Fecha a janela de parry
