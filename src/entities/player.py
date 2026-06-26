@@ -15,11 +15,11 @@ class Player:
     ROLL_TIME   = 0.45
 
     def __init__(self, name="Natsuki Subaru"):
-        self.stats = Stats(name=name, level=1, max_hp=600, hp=600,
-                           max_mp=60, mp=60, atk=12, defense=4, spd=10)
+        self.stats = Stats(name=name, level=1, max_hp=200, hp=200,
+                           max_mp=400, mp=400, atk=12, defense=4, spd=10)
         self.inventory = Inventory(gold=0)
-        self.inventory.add("health_potion_s", 3)
-        self.inventory.add("mana_potion", 2)
+        self.inventory.add("health_potion_s", 4)
+        self.inventory.add("mana_potion", 3)
         self.inventory.add("tracksuit", 1)
 
         self.world_pos   = [0.0, 0.0, 0.0]

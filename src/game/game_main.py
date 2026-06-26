@@ -1140,6 +1140,32 @@ class Game:
         self.hud.add_popup("BOSS: MARLUXIA", 3.0, (255, 80, 255))
         self.hud.add_popup("Salve Emilia!", 3.5, (255, 200, 255))
 
+    def _world_to_screen(self, world_pos):
+        """Converte uma posição 3D para coordenadas de tela 2D."""
+        # Pega a matriz de view e projeção da câmera
+        view_matrix = self.camera.view_matrix()
+        proj_matrix = self.camera.projection_matrix(self.scene._aspect)
+        
+        # Converte o ponto para espaço de clip
+        world_pos_h = np.array([world_pos[0], world_pos[1], world_pos[2], 1.0], dtype=np.float32)
+        clip_pos = proj_matrix @ view_matrix @ world_pos_h
+        
+        # Divide por w (perspectiva)
+        if clip_pos[3] == 0:
+            return None
+        ndc_x = clip_pos[0] / clip_pos[3]
+        ndc_y = clip_pos[1] / clip_pos[3]
+        
+        # Se estiver atrás da câmera, retorna None
+        if clip_pos[2] < -1.0:
+            return None
+        
+        # Converte para coordenadas de tela
+        screen_x = (ndc_x + 1) * 0.5 * self.screen_w
+        screen_y = (1 - ndc_y) * 0.5 * self.screen_h
+        
+        return (int(screen_x), int(screen_y))
+
     # ── Story / Cutscene ─────────────────────────────────────────────────────
 
     def _start_story(self):
@@ -4124,6 +4150,67 @@ class Game:
             #        h.draw_text("Passagem: TRANCADA", sw//2, 36, 14, (255,120,120), center=True)
             #    else:
             #        h.draw_text("Passagem: LIBERADA — [E/Enter] para subir", sw//2, 36, 14, (120,255,140), center=True)
+            for e, node in self.floor_state.enemies:
+                # Pula o boss (já tem barra própria)
+                if isinstance(e, Boss):
+                    continue
+                
+                # Pula inimigos mortos ou em animação de morte
+                if e.dead or getattr(e, '_death_anim_timer', None) is not None:
+                    continue
+                
+                # Pula inimigos com HP cheio (opcional - mostra só quando não está cheio)
+                # if e.stats.hp >= e.stats.max_hp:
+                #     continue
+                
+                # Posição da cabeça do inimigo (acima do modelo)
+                head_pos = [
+                    e.world_pos[0],
+                    e.world_pos[1] + 1.8,  # Altura da barra acima do inimigo
+                    e.world_pos[2]
+                ]
+                
+                # Converte posição 3D para 2D
+                screen_pos = self._world_to_screen(head_pos)
+                if screen_pos is None:
+                    continue
+                
+                screen_x, screen_y = screen_pos
+                
+                # ── DESENHA A BARRA DE VIDA ──
+                BAR_W = 50
+                BAR_H = 6
+                bar_x = screen_x - BAR_W // 2
+                bar_y = screen_y - BAR_H // 2
+                
+                # Fundo escuro da barra
+                h.draw_rect(bar_x, bar_y, BAR_W, BAR_H, (0.1, 0.1, 0.1), alpha=0.8)
+                
+                # Preenchimento da vida
+                hp_pct = max(0.0, e.stats.hp / e.stats.max_hp)
+                fill_w = int(BAR_W * hp_pct)
+                
+                if fill_w > 0:
+                    # Cor: verde -> amarelo -> vermelho conforme a vida diminui
+                    if hp_pct > 0.5:
+                        r = 0.2 + (1.0 - hp_pct) * 1.6
+                        g = 0.8
+                        b = 0.2
+                    elif hp_pct > 0.25:
+                        r = 0.9
+                        g = 0.9 - (0.5 - hp_pct) * 2.0
+                        b = 0.1
+                    else:
+                        r = 0.9
+                        g = 0.1 + hp_pct * 0.4
+                        b = 0.1
+                    
+                    h.draw_rect(bar_x + 2, bar_y + 2, max(0, fill_w - 4), BAR_H - 4, (r, g, b), alpha=0.9)
+                
+                # Borda da barra
+                h.draw_rect(bar_x, bar_y, BAR_W, 1, (0.3, 0.3, 0.3), alpha=0.6)
+                h.draw_rect(bar_x, bar_y + BAR_H - 1, BAR_W, 1, (0.3, 0.3, 0.3), alpha=0.6)
+                
 
     def _draw_rhythm_hud(self, h):
         sw, sh = self.screen_w, self.screen_h

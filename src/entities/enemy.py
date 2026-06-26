@@ -7,7 +7,7 @@ from src.entities.stats import Stats
 
 class Enemy:
     def __init__(self, name, level=1, world_pos=None, stationary: bool = False, can_windup: bool = False):
-        hp = 40 + level * 15
+        hp = 40 + level * 30
         self.stats = Stats(name=name, level=level, max_hp=hp, hp=hp,
                            atk=6+level*2, defense=2, spd=8)
         self.world_pos = list(world_pos or [0,0,0])
