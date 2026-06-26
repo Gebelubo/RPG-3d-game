@@ -1320,7 +1320,7 @@ class Game:
         def quit_game():
             pygame.quit(); sys.exit(0)
 
-        self.menus.push(Menu("Torre de Plêiades", [
+        self.menus.push(Menu("Re:Oblivion of Memories", [
             MenuItem("Nova Partida", start),
             MenuItem("Continuar",    continue_game),
             MenuItem("Sair",         quit_game),
@@ -4396,7 +4396,7 @@ class Game:
         if self.game_mode == "credits":
             h.draw_rect(0, 0, sw, sh, (0.0, 0.0, 0.0))
             credits = [
-                "Torre de Plêiades",
+                "Re:Oblivion of Memories",
                 "Re:Zero – Uma nova jornada",
                 "",
                 "── Desenvolvimento ──",
@@ -4881,7 +4881,7 @@ class Game:
         title_h = 64
         title_y = int(sh * 0.06)
         hud.draw_banner(
-            "TORRE DE PLÊIADES", sw / 2, title_y, w=title_w, h=title_h,
+            "Re:Oblivion of Memories", sw / 2, title_y, w=title_w, h=title_h,
             base_color=(0.10, 0.06, 0.20), edge_color=(0.68, 0.55, 0.22),
             text_color=(235, 220, 255), text_size=34, notch=min(28, title_w * 0.05),
         )
