@@ -408,7 +408,7 @@ class MarluxiaBoss(Enemy):
         bh = {
             "pos":    [bx, bz],
             "timer":  5.0,
-            "damage": max(1, self.stats.atk // 3),
+            "damage": max(1, self.stats.atk // 2),
             "radius": 2.0,   # range maior
         }
         self.blackholes.append(bh)
