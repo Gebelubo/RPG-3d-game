@@ -1,5 +1,3 @@
-"""Persistência e aplicação de volumes de música e efeitos sonoros."""
-
 import json
 import os
 
@@ -55,7 +53,6 @@ class AudioSettings:
         return self.sfx_volume != prev
 
     def apply(self, game):
-        """Aplica volumes ao mixer de música e ao gerenciador de SFX."""
         pygame.mixer.music.set_volume(self.music_volume)
         sounds = getattr(game, "sounds", None)
         if sounds is not None:

@@ -37,7 +37,6 @@ CONTROLS_SECTIONS = [
 
 
 def draw_controls_screen(hud, sw: int, sh: int):
-    """Desenha o painel de controles sobre o fundo do menu."""
     pad_x = max(24, int(sw * 0.05))
     panel_w = min(sw - pad_x * 2, 920)
     panel_h = min(int(sh * 0.58), 520)

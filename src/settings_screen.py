@@ -1,5 +1,3 @@
-"""Tela de configurações de áudio (menu principal)."""
-
 from src.config.audio_settings import AudioSettings
 from src.hud.hud import BRONZE_F, GOLD_DARK_F, GOLD_F, PARCHMENT_DK_F, SAPPHIRE_F
 

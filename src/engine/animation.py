@@ -1,15 +1,3 @@
-"""
-animation.py  –  AnimationController.
-
-Mantém o estado de animação atual (idle / walking / punching / reaction /
-beatrice / invisibleprovidence / item), avança o tempo, faz um blend simples
-(crossfade linear) entre o clipe anterior e o novo ao trocar de estado, e
-expõe get_bone_matrices() — a lista de mat4 finais (uma por osso) pronta
-para subir como uniform array no skinned.vert (uBoneMatrices[]).
-
-Não depende de pygame/OpenGL — só numpy. Pode ser testado isoladamente.
-"""
-
 import numpy as np
 from .gltf_loader import Bone, AnimationClip
 from .math3d import identity

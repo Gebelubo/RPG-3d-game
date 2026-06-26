@@ -1,16 +1,3 @@
-"""
-scene.py  –  SceneNode, Scene, PointLight.
-
-SceneNode:
-  position, rotation (euler YXZ), scale
-  optional Mesh + Texture
-  optional animate() callback
-
-Scene:
-  root node list
-  single PointLight (moving)
-  draw_all() uploads Phong uniforms and calls each node
-"""
 import time
 import math
 import numpy as np

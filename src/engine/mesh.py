@@ -1,8 +1,3 @@
-"""
-mesh.py  –  GPU-side mesh (VAO/VBO/IBO).
-Uploads MeshData and draws with glDrawElements.
-"""
-
 import numpy as np
 from OpenGL.GL import (
     glGenVertexArrays, glBindVertexArray,
@@ -16,12 +11,6 @@ from .obj_loader import MeshData
 
 
 class Mesh:
-    """
-    Vertex layout (stride = 8 floats = 32 bytes):
-      location 0 → position  (3 floats)
-      location 1 → normal    (3 floats)
-      location 2 → texcoord  (2 floats)
-    """
 
     STRIDE = 8 * 4  
 

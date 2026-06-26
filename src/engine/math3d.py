@@ -1,8 +1,3 @@
-"""
-math3d.py  –  Pure NumPy linear-algebra helpers.
-No OpenGL calls here; only math.
-"""
-
 import math
 import numpy as np
 
@@ -57,7 +52,6 @@ def rotate_z(angle_deg: float) -> Mat4:
 
 
 def rotate_axis(axis: Vec3, angle_deg: float) -> Mat4:
-    """Rodrigues rotation around arbitrary unit axis."""
     a = math.radians(angle_deg)
     c, s = math.cos(a), math.sin(a)
     t = 1.0 - c

@@ -1,6 +1,3 @@
-"""
-camera.py  –  Third-person camera (orbit around player) with smooth collision.
-"""
 import math
 import numpy as np
 from .math3d import look_at, perspective, normalize

@@ -1314,6 +1314,7 @@ class Game:
             self._build_floor(floor)
             self.game_mode = "explore"
             self.input.capture_mouse(True)
+            self.curr_mp = self.player.stats.max_hp
 
         def quit_game():
             pygame.quit(); sys.exit(0)

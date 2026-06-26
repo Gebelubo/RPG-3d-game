@@ -13,15 +13,6 @@ PRIORITY_NONE         = 0
 
 
 class SoundEffect:
-    """
-    Agora cada SoundEffect pode pertencer a uma "categoria" de prioridade.
-    Em vez de deixar o pygame.mixer escolher um canal qualquer (o que faz
-    sons importantes (voiceline de magia) às vezes não tocarem porque não
-    achou canal livre, ou serem cortados por outro som que caiu no mesmo
-    canal por acaso), sons com categoria reservam um CANAL DEDICADO
-    (via ChannelManager) e podem interromper canais de prioridade menor.
-    """
-
     def __init__(self, file_path, cooldown: float = 0.0, priority: int = PRIORITY_NONE):
         self.file_path = file_path
         self.sfx = pygame.mixer.Sound(

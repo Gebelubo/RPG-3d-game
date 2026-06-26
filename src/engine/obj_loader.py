@@ -1,10 +1,3 @@
-"""
-obj_loader.py  –  Own implementation of a .obj / .mtl reader.
-No third-party geometry library used.
-
-Returns a list of Mesh data-objects ready to be uploaded to the GPU.
-"""
-
 import os
 import numpy as np
 from dataclasses import dataclass, field

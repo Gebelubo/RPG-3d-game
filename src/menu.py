@@ -1,9 +1,3 @@
-"""
-Lightweight menu system adapted for the Pleiades Tower RPG.
-Provides `Menu`, `MenuItem` and `MenuManager` expected by `main.py`.
-Rendered using the existing `HUD` drawing helpers so it integrates with
-OpenGL-based UI already present in the project.
-"""
 from dataclasses import dataclass
 from typing import Callable, List, Optional
 

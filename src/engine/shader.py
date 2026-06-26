@@ -1,8 +1,3 @@
-"""
-shader.py  –  Compile, link and use GLSL shader programs.
-Only OpenGL 4.0 core calls.
-"""
-
 import os
 import numpy as np
 from OpenGL.GL import (
