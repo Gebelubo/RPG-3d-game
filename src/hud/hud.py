@@ -326,7 +326,8 @@ class HUD:
             self.draw_gem(bx + 222, by + 45, 10, SAPPHIRE_F, sides=6)
             self.draw_text(f"{shield_left}s", bx + 216, by + 40, 11, (175, 225, 255),
                            bold=True, center=True)
-
+            
+        self.player = player
         if game_mode == "explore":
             self._draw_action_menu()
         if self.spell_menu_open:
@@ -410,6 +411,9 @@ class HUD:
             self.draw_text(f"[{i + 1}]",       px + 210, iy + 8, 13, (230, 210, 130), bold=True)
 
     def _draw_item_submenu(self):
+        # Atualiza a lista de itens antes de desenhar
+        self.inventory_items = self.player.inventory.list_consumables() if hasattr(self, 'player') else []
+        
         sh = self.sh
         pw, ph = 240, 190
         px = 8 + 2 * (68 + 8)
@@ -418,8 +422,8 @@ class HUD:
                         border_color=GOLD_F, border_dark=EMERALD_DK_F,
                         gem_color=EMERALD_F, thickness=3)
         self.draw_banner("ITENS", px + pw / 2, py - 6, w=130, h=24,
-                         base_color=EMERALD_F, edge_color=EMERALD_DK_F,
-                         text_color=(255, 255, 255))
+                        base_color=EMERALD_F, edge_color=EMERALD_DK_F,
+                        text_color=(255, 255, 255))
         items = self.inventory_items
         if not items:
             self.draw_text("(vazio)", px + pw / 2, py + 60, 14, (175, 205, 175), center=True)
@@ -432,7 +436,7 @@ class HUD:
             self.draw_text(item.name,    px + 40, iy + 2,  13, (215, 255, 215))
             self.draw_text(f"x{qty}",    px + 40, iy + 18, 11, (160, 230, 160))
             self.draw_text(f"[{i + 1}]", px + 210, iy + 8, 13, (230, 210, 130), bold=True)
-
+            
     def _draw_skill_submenu(self):
         sh = self.sh
         pw, ph = 260, 190
