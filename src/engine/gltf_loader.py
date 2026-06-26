@@ -97,16 +97,6 @@ class GLTFLoader:
                 if np.linalg.det(skin_m[:3, :3]) != 0 and not np.allclose(skin_m, np.eye(4, dtype=np.float32), atol=1e-3):
                     derived = np.linalg.inv(skin_m).astype(np.float32)
                     if not np.allclose(derived, np.eye(4, dtype=np.float32)):
-                        # Esta normalização (manter só a rotação de 'derived' e
-                        # zerar a escala) é usada pelos assets no fluxo "estilo
-                        # Beatrice" (self._is_beatrice — ver load_merged, hoje
-                        # inclui Beatrice e AerialKnocker) — é o que cancela
-                        # corretamente o inverso do /100 aplicado em
-                        # _build_bones para ESSES assets especificamente. Para
-                        # os demais assets (ex.: Subaru, Heartless), 'derived'
-                        # já vem correto do jeito que o código original
-                        # (pré-correção Beatrice) calculava, então não tocamos
-                        # nele.
                         if getattr(self, '_is_beatrice', False):
                             rot_only = derived[:3, :3].copy()
                             col_norms = np.linalg.norm(rot_only, axis=0)
@@ -144,38 +134,14 @@ class GLTFLoader:
         joint_node_indices = list(skin.joints)
         node_to_bone = {n: i for i, n in enumerate(joint_node_indices)}
 
-        # Identifica se este asset usa o fluxo de correção "estilo Beatrice"
-        # (detecção automática cm->m via heurística na escala da inverse bind
-        # matrix + normalização da rotação em _compute_root_transform).
-        # Necessário para assets que vieram do mesmo exportador/pipeline da
-        # Beatrice — hoje isso inclui o AerialKnocker, que comprime/esmaga
-        # exatamente como a Beatrice esmagava antes dessa correção.
-        # Qualquer outro asset (ex.: Subaru, Heartless) mantém o
-        # comportamento histórico/original — sempre assume centímetros e
-        # aplica /100, sem essa heurística, porque é isso que funciona pra eles.
         basename_lower = os.path.basename(path).lower()
         self._is_beatrice = any(tag in basename_lower for tag in ("beatrice", "aerialknocker"))
-        # marluxia: vértices em metros, esqueleto em centímetros, scale=100 nos
-        # mesh nodes. Não usa o fluxo beatrice — em vez disso, o scale do node
-        # é aplicado diretamente nos vértices em _build_primitive.
         self._is_marluxia = "marluxia" in basename_lower
 
         if self._is_beatrice:
-            # Detecta uma única vez se este asset foi exportado em centímetros
-            # (Mixamo/FBX, comum) ou já em metros (ex.: export direto do
-            # Blender). Usado tanto pelo bind pose (_build_bones) quanto pelas
-            # curvas de animação (_merge_tracks) — as duas precisam concordar,
-            # senão o bind pose fica em metros mas a animação "puxa" os bones
-            # de volta para a escala cm a cada frame (ou vice-versa). Ver
-            # _build_bones para detalhes da heurística.
             ibm_accessor = skin.inverseBindMatrices
             ibm_probe = self._read_accessor(gltf, ibm_accessor).reshape(-1, 4, 4)
             first_ibm_scale = float(np.linalg.norm(ibm_probe[0].T[:3, 0])) if len(ibm_probe) else 1.0
-            # _needs_cm_to_m: translacoes de bind local e animacao precisam /100
-            # _needs_ibm_scale: a inverse bind matrix tambem carrega escala ~100
-            # embutida (exportadores antigos com axis_conversion). Quando IBM
-            # norm~1 mas translacoes estao em cm (Mixamo com scale=1, Marluxia),
-            # so as translacoes precisam de /100 — IBM ja esta normalizada.
             if first_ibm_scale > 10.0:
                 self._needs_cm_to_m = True
                 self._needs_ibm_scale = True
@@ -194,14 +160,10 @@ class GLTFLoader:
                     self._needs_cm_to_m = False
                 self._needs_ibm_scale = False
         elif self._is_marluxia:
-            # Marluxia: vértices em metros, esqueleto em centímetros, scale=100
-            # no mesh node. Estratégia: multiplicar vértices por 100 em
-            # _build_primitive (igualando-os ao espaço cm do esqueleto). Por
-            # isso NÃO dividimos o esqueleto por 100 aqui — ambos ficam em cm.
             self._needs_cm_to_m = False
             self._needs_ibm_scale = False
         else:
-            self._needs_cm_to_m = True  # comportamento original: sempre cm->m
+            self._needs_cm_to_m = True 
 
         bones = self._build_bones(gltf, skin, joint_node_indices, node_to_bone)
         clips = self._build_clips(gltf, node_to_bone, bones)
@@ -254,10 +216,7 @@ class GLTFLoader:
             return m
 
         bones = []
-        # needs_cm_to_m já foi calculado uma vez em load_merged() (mesma
-        # decisão usada pelas curvas de animação em _merge_tracks, para que
-        # bind pose e animação fiquem na mesma unidade). Fallback para True
-        # (comportamento histórico) se chamado fora do fluxo de load_merged.
+
         needs_cm_to_m = getattr(self, '_needs_cm_to_m', True)
 
         for bone_idx, node_idx in enumerate(joint_node_indices):
@@ -267,18 +226,6 @@ class GLTFLoader:
             t, r, s = self._mat4_to_trs(bind_m)
             ibm = ibm_data[bone_idx].T.astype(np.float32)
 
-            # CORREÇÃO: alguns exportadores (Mixamo/FBX) gravam o bind pose
-            # em centímetros, então tanto a translação do bind local quanto a
-            # inverse bind matrix (rotação+escala+translação, linhas 0-2)
-            # carregam um fator de escala 100 embutido. Se só um dos dois
-            # for normalizado, esse fator não se cancela na cadeia
-            # global_transform @ inverse_bind_matrix, e ossos no fim de
-            # cadeias longas (ex.: Hips->Spine->Spine1->Spine2->Neck->Head)
-            # ficam com escala/posição ~100x erradas mesmo com pesos de
-            # skinning corretos. Aplicada apenas quando needs_cm_to_m
-            # detecta essa unidade (ver load_merged) — assets já em metros
-            # (ex.: exports diretos do Blender) NÃO devem passar por isso,
-            # ou o modelo inteiro fica esmagado para ~1% do tamanho correto.
             needs_ibm_scale = getattr(self, '_needs_ibm_scale', needs_cm_to_m)
             if needs_cm_to_m:
                 t = t / 100.0
@@ -385,25 +332,6 @@ class GLTFLoader:
             for t in paths[key][0].tolist()
         ))
         all_times = np.array(all_times, dtype=np.float32) if all_times else np.array([0.0], dtype=np.float32)
-        # IMPORTANTE: quando um canal (translation/rotation/scale) não existe
-        # para este bone neste clipe — comum em exports que só gravam
-        # rotation para bones de uma cadeia (ex.: spine_01..head) — o valor
-        # default usado precisa ser o BIND LOCAL do bone, não um valor fixo
-        # neutro (0 translação / escala 1). _sample_locals usa a translação
-        # amostrada como transform local ABSOLUTO (substitui o bind, não soma
-        # a ele), então um default [0,0,0] colapsaria esses bones na origem
-        # do seu espaço de pai — colando spine_01..head todos na posição do
-        # bone anterior na cadeia e "achatando" o personagem.
-        # IMPORTANTE (Beatrice apenas): quando um canal (translation/rotation/
-        # scale) não existe para este bone neste clipe — comum em exports que
-        # só gravam rotation para bones de uma cadeia (ex.: spine_01..head) —
-        # o valor default usado precisa ser o BIND LOCAL do bone, não um valor
-        # fixo neutro (0 translação / escala 1). _sample_locals usa a
-        # translação amostrada como transform local ABSOLUTO (substitui o
-        # bind, não soma a ele), então um default [0,0,0] colapsaria esses
-        # bones na origem do seu espaço de pai. Isso é necessário pro export
-        # da Beatrice; o Subaru mantém os defaults neutros originais, que é o
-        # que funciona pra ele.
         if getattr(self, '_is_beatrice', False):
             default_t = bone.local_bind_translation
             default_r = bone.local_bind_rotation
@@ -414,12 +342,6 @@ class GLTFLoader:
             default_s = np.array([1, 1, 1], dtype=np.float32)
         translations = self._resample(paths.get("translation"), all_times, default=default_t)
         rotations    = self._resample(paths.get("rotation"),    all_times, default=default_r, is_quat=True)
-        # CORREÇÃO TAMBÉM AQUI: quando o asset usa centímetros (ver
-        # load_merged / _build_bones), as curvas de translation das
-        # animações também vêm em centímetros e precisam do mesmo /100 —
-        # senão a animação "puxaria" os bones de volta pra escala cm a cada
-        # frame. Usa a mesma decisão needs_cm_to_m do bind pose (consistência
-        # obrigatória entre os dois); assets já em metros não passam por isso.
         if "translation" in paths and getattr(self, '_needs_cm_to_m', True):
             translations = translations / 100.0
         scales       = self._resample(paths.get("scale"),       all_times, default=default_s)
@@ -474,15 +396,11 @@ class GLTFLoader:
         joints    = self._read_accessor(gltf, attrs.JOINTS_0).astype(np.uint16)
         weights   = self._read_accessor(gltf, attrs.WEIGHTS_0).astype(np.float32)
         if prim.indices is None:
-            # Primitive não-indexada (válido no glTF: ausência de "indices"
-            # significa desenhar os vértices em sequência). Gera um índice
-            # sequencial sintético para manter a mesma SkinnedMeshData.indices
-            # que o resto do pipeline (skinning, draw) espera.
-            mode = prim.mode if prim.mode is not None else 4  # default glTF = TRIANGLES
+            mode = prim.mode if prim.mode is not None else 4 
             n_verts = len(positions)
-            if mode == 4:  # TRIANGLES
+            if mode == 4:  
                 indices = np.arange(n_verts, dtype=np.uint32)
-            elif mode == 5:  # TRIANGLE_STRIP -> expande para lista de triângulos
+            elif mode == 5:  
                 tris = []
                 for i in range(n_verts - 2):
                     if i % 2 == 0:
@@ -490,7 +408,7 @@ class GLTFLoader:
                     else:
                         tris.extend([i + 1, i, i + 2])
                 indices = np.array(tris, dtype=np.uint32)
-            elif mode == 6:  # TRIANGLE_FAN -> expande para lista de triângulos
+            elif mode == 6: 
                 tris = []
                 for i in range(1, n_verts - 1):
                     tris.extend([0, i, i + 1])
@@ -500,20 +418,12 @@ class GLTFLoader:
                 return None
         else:
             indices = self._read_accessor(gltf, prim.indices).astype(np.uint32).reshape(-1)
-        # Para assets Marluxia: vértices estão em metros mas o esqueleto inteiro
-        # está em centímetros. O node.scale=[100,100,100] nunca foi aplicado nos
-        # vértices antes do skinning. Aplicamos agora multiplicando as posições
-        # (e normais, que ficam no mesmo espaço) pelo scale do mesh node.
         if getattr(self, '_is_marluxia', False) and node is not None:
             node_scale = np.array(node.scale if node.scale else [1, 1, 1], dtype=np.float32)
             if not np.allclose(node_scale, 1.0):
                 positions = positions * node_scale
-                # normais são vetores — precisam ser divididas (inverso transposto da escala uniforme)
-                # Para escala uniforme (100,100,100) isso equivale a só normalizar depois
-                # Para escala não-uniforme: normal_scale = 1/node_scale
                 inv_scale = np.where(np.abs(node_scale) < 1e-8, 1.0, 1.0 / node_scale)
                 normals = normals * inv_scale
-                # renormaliza as normais
                 norms = np.linalg.norm(normals, axis=1, keepdims=True)
                 norms = np.where(norms < 1e-8, 1.0, norms)
                 normals = normals / norms

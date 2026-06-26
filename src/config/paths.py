@@ -16,10 +16,7 @@ SUBARU_GLB_FILES = {
     "Parry":                os.path.join(SUBARU_GLB_DIR, "subaru_parry.glb"),
 }
 
-# Modelo completo e animado da própria Beatrice (mesh + skeleton + clipe de
-# idle em loop), usado em _show_beatrice() no lugar do antigo Beatrice.obj
-# estático. Tem um único clipe ("Swim_Idle_Loop") que toca em loop contínuo
-# enquanto ela estiver visível em cena.
+
 BEATRICE_GLB_PATH = os.path.join(_HERE, "assets", "models", "Beatrice", "beatrice_animation.glb")
 
 HEARTLESS_GLB_PATH  = os.path.join(_HERE, "assets", "models", "Heartless",     "heartless_idle.glb")
@@ -40,10 +37,7 @@ AERIALKNOCKER_GLB_FILES = {
 
 EMILIA_GLB_PATH         = os.path.join(_HERE, "assets", "models", "Emilia", "emilia_idle.glb")
 
-# Emilia — cutscene pós-boss: dois clipes em arquivos .glb separados
-# (mesmo padrão do Subaru), já que cada export do Mixamo traz o clipe
-# interno sempre nomeado "mixamo.com". MultiClipCharacter renomeia pela
-# chave do dict, então o nome interno do clip não importa.
+
 EMILIA_GLB_FILES = {
     "Sleeping": os.path.join(_HERE, "assets", "models", "Emilia", "emilia_sleeping.glb"),
     "Waking":   os.path.join(_HERE, "assets", "models", "Emilia", "emilia_waking.glb"),

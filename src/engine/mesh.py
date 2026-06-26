@@ -23,13 +23,12 @@ class Mesh:
       location 2 → texcoord  (2 floats)
     """
 
-    STRIDE = 8 * 4   # 8 floats × 4 bytes
+    STRIDE = 8 * 4  
 
     def __init__(self, mesh_data: MeshData):
         self.name         = mesh_data.name
         self.index_count  = len(mesh_data.indices)
 
-        # Material defaults (may be overridden by ShaderProgram uniforms)
         self.base_color    = mesh_data.base_color
         self.ka            = mesh_data.ka
         self.kd            = mesh_data.kd
@@ -48,24 +47,19 @@ class Mesh:
 
         glBindVertexArray(self.vao)
 
-        # VBO
         glBindBuffer(GL_ARRAY_BUFFER, vbo)
         glBufferData(GL_ARRAY_BUFFER, vertices.nbytes, vertices, GL_STATIC_DRAW)
 
-        # IBO
         glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ibo)
         glBufferData(GL_ELEMENT_ARRAY_BUFFER, indices.nbytes, indices, GL_STATIC_DRAW)
 
-        # Attributes
-        # location 0 – position
+  
         glEnableVertexAttribArray(0)
         glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, self.STRIDE,
                               ctypes_offset(0))
-        # location 1 – normal
         glEnableVertexAttribArray(1)
         glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, self.STRIDE,
                               ctypes_offset(3 * 4))
-        # location 2 – texcoord
         glEnableVertexAttribArray(2)
         glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, self.STRIDE,
                               ctypes_offset(6 * 4))
@@ -80,18 +74,15 @@ class Mesh:
         glBindVertexArray(0)
 
     def destroy(self):
-        """Libera buffers de GPU. Seguro chamar múltiplas vezes."""
         if self._destroyed:
             return
         self._destroyed = True
         glDeleteVertexArrays(1, [self.vao])
         glDeleteBuffers(2, [self.vbo, self.ibo])
 
-    # Alias para compatibilidade com Scene.cleanup()
     cleanup = destroy
 
 
-# ── ctypes offset helper ──────────────────────────────────────────────────────
 
 import ctypes
 
@@ -99,10 +90,8 @@ def ctypes_offset(byte_offset: int):
     return ctypes.c_void_p(byte_offset)
 
 
-# ── Procedural geometry factories ────────────────────────────────────────────
 
 class ProceduralMesh(Mesh):
-    """Create a Mesh directly from numpy arrays (no .obj file)."""
 
     def __init__(self, name: str, vertices: np.ndarray, indices: np.ndarray,
                  base_color=(0.8, 0.8, 0.8), ka=0.2, kd=0.8, ks=0.5, shininess=32.0):
@@ -119,32 +108,23 @@ class ProceduralMesh(Mesh):
 
 
 def make_cube(half=0.5) -> tuple[np.ndarray, np.ndarray]:
-    """Returns (vertices[N,8], indices[M]) for a unit cube."""
     h = half
-    # 6 faces × 4 vertices
-    # fmt: [x,y,z, nx,ny,nz, u,v]
+
     faces = [
-        # +X
         [ h,-h,-h,  1,0,0,  0,0],  [ h, h,-h,  1,0,0,  1,0],
         [ h, h, h,  1,0,0,  1,1],  [ h,-h, h,  1,0,0,  0,1],
-        # -X
         [-h,-h, h, -1,0,0,  0,0],  [-h, h, h, -1,0,0,  1,0],
         [-h, h,-h, -1,0,0,  1,1],  [-h,-h,-h, -1,0,0,  0,1],
-        # +Y
         [-h, h,-h,  0,1,0,  0,0],  [-h, h, h,  0,1,0,  0,1],
         [ h, h, h,  0,1,0,  1,1],  [ h, h,-h,  0,1,0,  1,0],
-        # -Y
         [-h,-h, h,  0,-1,0, 0,0],  [-h,-h,-h,  0,-1,0, 0,1],
         [ h,-h,-h,  0,-1,0, 1,1],  [ h,-h, h,  0,-1,0, 1,0],
-        # +Z
         [ h,-h, h,  0,0,1,  0,0],  [ h, h, h,  0,0,1,  1,0],
         [-h, h, h,  0,0,1,  1,1],  [-h,-h, h,  0,0,1,  0,1],
-        # -Z
         [-h,-h,-h,  0,0,-1, 0,0],  [-h, h,-h,  0,0,-1, 1,0],
         [ h, h,-h,  0,0,-1, 1,1],  [ h,-h,-h,  0,0,-1, 0,1],
     ]
     verts = np.array(faces, dtype=np.float32)
-    # 6 faces × 2 triangles
     idxs = []
     for f in range(6):
         b = f * 4

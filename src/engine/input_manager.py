@@ -1,15 +1,10 @@
-"""
-input_manager.py  –  Thin wrapper around pygame events.
-Only keyboard / mouse capture; no graphical functions used from pygame.
-"""
-
 import pygame
 
 
 class InputManager:
     def __init__(self):
         self._keys_held:    set[str] = set()
-        self._keys_pressed: set[str] = set()   # only this frame
+        self._keys_pressed: set[str] = set()   
         self._keys_released:set[str] = set()
         self._mouse_buttons: dict[int, bool] = {}
         self._mouse_dx = 0
@@ -19,11 +14,9 @@ class InputManager:
         self._quit  = False
         self.mouse_captured = False
         
-        # Flags para cliques estruturados em menus e HUD
         self.mouse_clicked = False
         self.resize_event = None
 
-    # ── Per-frame update ──────────────────────────────────────────────────────
 
     def update(self):
         self._keys_pressed.clear()
@@ -56,7 +49,6 @@ class InputManager:
 
             elif event.type == pygame.MOUSEBUTTONDOWN:
                 self._mouse_buttons[event.button] = True
-                # Registra cliques do botão esquerdo para menus/HUD
                 if event.button == 1:
                     self.mouse_clicked = True
                     self._mouse_pos = event.pos
@@ -70,7 +62,6 @@ class InputManager:
             elif event.type == pygame.VIDEORESIZE:
                 self.resize_event = (event.w, event.h)
 
-    # ── Queries ───────────────────────────────────────────────────────────────
 
     def key_held(self, *names) -> bool:
         return any(n in self._keys_held for n in names)
@@ -108,7 +99,6 @@ class InputManager:
     def should_quit(self) -> bool:
         return self._quit
 
-    # ── Mouse capture helper ──────────────────────────────────────────────────
 
     def capture_mouse(self, capture: bool):
         self.mouse_captured = capture

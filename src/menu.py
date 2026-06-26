@@ -27,7 +27,6 @@ class Menu:
         self.items = list(items)
 
 
-# Dica exibida abaixo dos itens quando a opção está selecionada
 _ITEM_HINTS = {
     "Nova Partida": "Inicie sua jornada em Castle Oblivion do zero.",
     "Continuar":    "Retome a jornada a partir do último save.",
@@ -38,7 +37,6 @@ _ITEM_HINTS = {
     "Menu Principal": "Voltar à tela de título.",
 }
 
-# Cor do ícone (medalhão) por rótulo
 _ITEM_GEM = {
     "Nova Partida":   EMERALD_F,
     "Continuar":      SAPPHIRE_F,
@@ -99,7 +97,6 @@ class MenuManager:
         if not menu:
             return
 
-        # Moldura medieval (mesmo estilo do HUD in-game)
         hud.draw_frame(
             px, py, pw, ph,
             bg_color=PARCHMENT_DK_F,
@@ -109,7 +106,6 @@ class MenuManager:
             gem_color=BRONZE_F,
         )
 
-        # Faixa de título
         banner_h = 32
         banner_y = py + 10
         hud.draw_banner(
@@ -122,13 +118,11 @@ class MenuManager:
             notch=12,
         )
 
-        # Divisor sob o título
         div_y = banner_y + banner_h + 10
         hud.draw_rect(px + 24, div_y, pw - 48, 1, GOLD_DARK_F, alpha=0.85)
         hud.draw_gem(px + 24, div_y, 3, GOLD_F, sides=4, highlight=False)
         hud.draw_gem(px + pw - 24, div_y, 3, GOLD_F, sides=4, highlight=False)
 
-        # Itens
         item_y = div_y + 16
         item_h = 42
         sel_idx = self.selection_index()
@@ -140,7 +134,6 @@ class MenuManager:
             row_y = item_y - 4
 
             if is_sel:
-                # Brilho pulsante na seleção
                 pulse = 0.55 + 0.12 * abs((anim_t * 2.5) % 2.0 - 1.0)
                 hud.draw_rect(row_x, row_y, row_w, item_h, (0.22, 0.14, 0.38), alpha=pulse)
                 hud.draw_rect(row_x, row_y, 3, item_h, GOLD_F, alpha=0.95)
@@ -162,7 +155,6 @@ class MenuManager:
             hud.draw_text(it.label, row_x + 52, item_y + 4, 17, label_col, bold=is_sel)
             item_y += item_h + 4
 
-        # Área de dica (preenche o centro-inferior do painel)
         hint_y = item_y + 6
         hint_box_h = py + ph - hint_y - 36
         if hint_box_h > 20:
@@ -175,7 +167,6 @@ class MenuManager:
                 hud.draw_text(hint, px + pw // 2, hint_y + hint_box_h // 2 - 4,
                               13, (180, 175, 200), center=True)
 
-        # Rodapé do painel
         hud.draw_text(
             "↑ ↓ navegar  ·  Enter confirmar  ·  Esc voltar",
             px + pw // 2, py + ph - 18, 11, (140, 135, 160), center=True,

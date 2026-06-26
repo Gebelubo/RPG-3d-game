@@ -1,10 +1,5 @@
-"""
-Tela de controles exibida a partir do menu principal.
-"""
-
 from src.hud.hud import BRONZE_F, GOLD_DARK_F, GOLD_F, PARCHMENT_DK_F
 
-# (título da seção, [(tecla, descrição), ...])
 CONTROLS_SECTIONS = [
     ("Movimento e Câmera", [
         ("W A S D", "Mover (relativo à câmera)"),

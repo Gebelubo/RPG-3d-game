@@ -8,8 +8,8 @@ from .math3d import look_at, perspective, normalize
 
 class Camera:
     def __init__(self, fov=60.0, near=0.1, far=500.0):
-        self.yaw   = 0.0    # horizontal orbit angle (degrees)
-        self.pitch = 20.0   # vertical angle (degrees)
+        self.yaw   = 0.0    
+        self.pitch = 20.0  
         self.fov   = fov
         self.near  = near
         self.far   = far
@@ -42,17 +42,14 @@ class Camera:
         target[1] += 1.4
         self.target_pos = target
 
-        # 1. Distância máxima permitida pelo braço original
         max_d = self.arm_length
         ground_y = target[1] - 1.0
 
-        # Ajuste pelo chão (se a câmera olha para baixo)
         if self.front[1] > 1e-6:
             t_ground = (target[1] - ground_y) / self.front[1]
             if 0.1 < t_ground < max_d:
                 max_d = max(0.1, t_ground - 0.05)
 
-        # 2. Limitar distância pelas paredes (planos)
         if walls:
             PLAYER_RADIUS = 0.45
             for wall in walls:
@@ -60,57 +57,46 @@ class Camera:
                 normal = np.array(wall["normal"], dtype=np.float32)
                 thickness = wall.get("thickness", 0.2)
 
-                # Interseção do raio com o plano
                 denom = np.dot(self.front, normal)
                 if abs(denom) < 1e-6:
-                    continue  # paralelo
+                    continue 
                 
-                # Distância do target ao plano ao longo da direção front
                 d_plane = np.dot(target - wp, normal) / denom
                 if d_plane > 0.1:
-                    # Offset para não encostar
                     offset = (thickness + PLAYER_RADIUS) / abs(denom)
                     safe_d = d_plane - offset
                     if safe_d < max_d:
                         max_d = max(0.1, safe_d)
 
-        # 3. Bloqueadores esféricos (Inimigos/Obstáculos)
-        # Cálculo geométrico exato para evitar trepidação (jitter)
+
         raw_distance = max_d
         if blockers:
             for b in blockers:
                 bp = np.array(b["pos"], dtype=np.float32)
                 br = float(b.get("radius", 0.6))
                 
-                # Vetor do jogador para o obstáculo
                 to_blocker = bp - target
-                # Projeção do obstáculo na linha de visão invertida da câmera
                 projection = np.dot(to_blocker, -self.front)
                 
-                if projection > 0:  # O obstáculo está atrás do jogador (na rota da câmera)
-                    # Distância perpendicular do centro da esfera até a linha da câmera
+                if projection > 0:  
                     perpendicular_dist = np.linalg.norm(to_blocker - (-self.front * projection))
                     safety_margin = br + 0.45
                     
                     if perpendicular_dist < safety_margin:
-                        # Colisão matemática com a esfera
                         collision_d = projection - math.sqrt(safety_margin**2 - perpendicular_dist**2)
                         if 0.1 < collision_d < raw_distance:
                             raw_distance = max(0.1, collision_d)
 
-        # 4. Interpolação assimétrica da distância (Suavização anti-tontura)
         if not hasattr(self, '_current_distance'):
             self._current_distance = raw_distance
 
-        # Se precisar encolher por colisão súbita, vai rápido. Se for esticar, vai macio.
         if raw_distance < self._current_distance:
-            lerp_factor = 0.40  # Reação rápida para não clipar a geometria
+            lerp_factor = 0.40  
         else:
-            lerp_factor = 0.08  # Retorno lento para estabilizar a visão do jogador
+            lerp_factor = 0.08  
 
         self._current_distance += (raw_distance - self._current_distance) * lerp_factor
 
-        # Posição final baseada no braço suavizado
         self.pos = target - self.front * self._current_distance
 
     def process_mouse(self, dx: float, dy: float):
@@ -120,7 +106,7 @@ class Camera:
         self._update_vectors()
 
     def process_keyboard(self, keys, dt):
-        pass  # player moves, not camera
+        pass  
 
     def view_matrix(self) -> np.ndarray:
         return look_at(self.pos, self.target_pos, self.up)
@@ -132,7 +118,6 @@ class Camera:
     def position(self) -> np.ndarray:
         return self.pos
 
-    # forward direction projected flat (for player movement)
     @property
     def flat_forward(self) -> np.ndarray:
         f = np.array([self.front[0], 0.0, self.front[2]], dtype=np.float32)

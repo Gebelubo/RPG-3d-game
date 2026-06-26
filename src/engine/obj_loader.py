@@ -13,12 +13,10 @@ from typing import Optional
 
 @dataclass
 class MeshData:
-    """Raw CPU-side mesh after loading."""
     name:      str
-    vertices:  np.ndarray   # (N, 8)  [x,y,z, nx,ny,nz, u,v]
-    indices:   np.ndarray   # (M,)    uint32
-    material:  Optional[str] = None   # material name
-    # resolved after mtl parse:
+    vertices:  np.ndarray   
+    indices:   np.ndarray   
+    material:  Optional[str] = None   
     texture_path:   Optional[str] = None
     base_color:     tuple = (0.8, 0.8, 0.8)
     ka:             float = 0.2
@@ -27,17 +25,8 @@ class MeshData:
     shininess:      float = 32.0
 
 
-# ─────────────────────────────────────────────────────────────────────────────
 
 class OBJLoader:
-    """
-    Parses a Wavefront .obj file and returns a list[MeshData].
-    Supports:
-      v, vn, vt, f  (triangles and quads – quads are fan-triangulated)
-      o / g         (object / group names → separate meshes)
-      usemtl        (material assignment)
-      mtllib        (loads .mtl alongside)
-    """
 
     def load(self, path: str) -> list[MeshData]:
         base_dir = os.path.dirname(os.path.abspath(path))

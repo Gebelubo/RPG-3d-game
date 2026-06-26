@@ -59,7 +59,6 @@ def draw_settings_screen(hud, sw: int, sh: int, audio: AudioSettings,
         label_col = (255, 245, 230) if is_sel else (200, 195, 215)
         hud.draw_text(label, bar_x, row_y, 16, label_col, bold=is_sel)
 
-        # Trilha da barra
         track_y = row_y + 26
         hud.draw_rect(bar_x, track_y, bar_w, bar_h, (0.08, 0.07, 0.12), alpha=0.9)
         hud.draw_rect(bar_x, track_y, bar_w, 2, GOLD_DARK_F, alpha=0.6)
@@ -73,7 +72,6 @@ def draw_settings_screen(hud, sw: int, sh: int, audio: AudioSettings,
                           (fill_col[0] + 0.15, fill_col[1] + 0.15, fill_col[2] + 0.15),
                           alpha=0.5)
 
-        # Indicador
         knob_x = bar_x + int(bar_w * vol)
         knob_col = SAPPHIRE_F if key == "music" else (0.35, 0.72, 0.48)
         hud.draw_medallion(knob_x, track_y + bar_h // 2, 9, knob_col)

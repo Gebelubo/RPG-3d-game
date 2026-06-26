@@ -6,17 +6,8 @@ No OpenGL calls here; only math.
 import math
 import numpy as np
 
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Type alias
-# ─────────────────────────────────────────────────────────────────────────────
-Mat4 = np.ndarray   # shape (4,4) float32
-Vec3 = np.ndarray   # shape (3,)  float32
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Matrix constructors
-# ─────────────────────────────────────────────────────────────────────────────
+Mat4 = np.ndarray  
+Vec3 = np.ndarray   
 
 def identity() -> Mat4:
     return np.eye(4, dtype=np.float32)
@@ -78,11 +69,6 @@ def rotate_axis(axis: Vec3, angle_deg: float) -> Mat4:
     m[2, 0] = t*x*z - s*y;  m[2, 1] = t*y*z + s*x;  m[2, 2] = t*z*z + c
     return m
 
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Camera matrices
-# ─────────────────────────────────────────────────────────────────────────────
-
 def look_at(eye: Vec3, center: Vec3, up: Vec3) -> Mat4:
     f = normalize(center - eye)
     r = normalize(np.cross(f, normalize(up)))
@@ -115,11 +101,6 @@ def ortho(left, right, bottom, top, near, far) -> Mat4:
     m[2, 3] = -(far   + near)   / (far   - near)
     return m
 
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Vector helpers
-# ─────────────────────────────────────────────────────────────────────────────
-
 def vec3(x=0.0, y=0.0, z=0.0) -> Vec3:
     return np.array([x, y, z], dtype=np.float32)
 
@@ -130,7 +111,6 @@ def normalize(v: np.ndarray) -> np.ndarray:
 
 
 def mat3_normal_matrix(model: Mat4) -> np.ndarray:
-    """Returns the 3×3 normal matrix (transposed inverse of upper-left 3×3)."""
     m3 = model[:3, :3].copy()
     try:
         return np.linalg.inv(m3).T.astype(np.float32)
