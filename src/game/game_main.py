@@ -173,7 +173,7 @@ class Game:
         self.first_msg = False
         self._menu_anim_t = 0.0
         self._settings_row = 0
-        self.curr_mp = 0
+        self.curr_mp = 400
         self._push_title_menu()
 
     # ── Cena base ─────────────────────────────────────────────────────────────
