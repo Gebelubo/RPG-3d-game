@@ -2144,7 +2144,7 @@ class Game:
                 dx = self.player.world_pos[0] - book_pos[0]
                 dz = self.player.world_pos[2] - book_pos[2]
                 dist = (dx * dx + dz * dz) ** 0.5
-                if dist <= radius:
+                if dist <= radius + 1.5:
                     self._open_book()
 
     # ── Spells / Items ────────────────────────────────────────────────────────
@@ -3100,7 +3100,7 @@ class Game:
                 dx = self.player.world_pos[0] - book_pos[0]
                 dz = self.player.world_pos[2] - book_pos[2]
                 dist = (dx * dx + dz * dz) ** 0.5
-                if dist <= radius:
+                if dist <= radius+1.5:
                     self.notifications.append({
                         "text": "Pressione E para ler os relatos",
                         "x": self.screen_w // 2,
@@ -3147,11 +3147,11 @@ class Game:
                 # Fase do boss
                 phase = getattr(boss, 'phase', 1)
                 fase_textos = {
-                    1: "FASE 1: O DESPERTAR",
-                    2: "FASE 2: A MALDIÇÃO",
-                    3: "FASE 3: A FÚRIA",
-                    4: "FASE 4: O CAOS",
-                    5: "FASE 5: A ASCENSÃO"
+                    1: "Dandelion",
+                    2: "Nobody",
+                    3: "Memórias",
+                    4: "Oblivion",
+                    5: "Marlúxia"
                 }
                 
                 if phase in fase_textos and getattr(boss, f'_phase{phase}_triggered', False):
@@ -3735,19 +3735,19 @@ class Game:
         if not getattr(boss, '_phase2_triggered', False) and _cur_phase >= 2 and not boss.dead:
             boss._phase2_triggered = True
             boss._atk_speed_mult = 2.0
-            self.hud.add_popup("FASE 2!", 2.5, (255, 160, 0))
+            #self.hud.add_popup("FASE 2!", 2.5, (255, 160, 0))
             self.hud.add_popup("MALDIÇÃO - MAGIA BLOQUEADA", 2.5, (255, 160, 0))
 
 
         if not getattr(boss, '_phase3_triggered', False) and _cur_phase >= 3 and not boss.dead:
             boss._phase3_triggered = True
-            self.hud.add_popup("FASE 3!", 2.5, (200, 80, 255))
+            #self.hud.add_popup("FASE 3!", 2.5, (200, 80, 255))
 
         if not getattr(boss, '_phase4_triggered', False) and _cur_phase >= 4 and not boss.dead:
             boss._phase4_triggered = True
             boss._atk_speed_mult = 2.5
             self.sounds.marluxia_fase4.play()
-            self.hud.add_popup("FÚRIA!", 2.5, (255, 80, 0))
+            #self.hud.add_popup("FÚRIA!", 2.5, (255, 80, 0))
 
         # ── Fase 5: Enrage ──
         if not getattr(boss, '_enrage_triggered', False) and boss.stats.hp <= 1 and not boss.dead:
