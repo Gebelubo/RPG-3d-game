@@ -3160,7 +3160,7 @@ class Game:
                 }
                 
                 # Fase 1: mostra SEMPRE (não precisa de flag)
-                if phase == 1:
+                if phase == 1 or phase==5:
                     # Timer para mostrar a fase 1 apenas nos primeiros segundos
                     if not hasattr(self, '_phase1_shown'):
                         setattr(self, '_phase1_shown', 0.0)
@@ -4512,8 +4512,7 @@ class Game:
                     sw // 2, BAR_Y + 2, 11, (230, 200, 255), center=True,
                 )
                 phase = getattr(boss, 'phase', 1)
-                if phase > 1:
-                    h.draw_text(f"FASE {phase}", BAR_X + BAR_W + PADDING * 2 + 4, BAR_Y + 2, 11, (255, 80, 200))
+                h.draw_text(f"FASE {phase}", BAR_X + BAR_W + PADDING * 2 + 4, BAR_Y + 2, 11, (255, 80, 200))
         # (buracos negros desenhados como meshes 3D em _process_blackholes)
         if self.game_mode != "menu":
             h.draw_main_hud(self.player, self.game_mode)
