@@ -217,3 +217,17 @@ class Effects:
 
         # Subaru — passos: prioridade WALK (a mais baixa, cede pra tudo)
         self.subaru_walk = SoundEffect('subaru_sfx/walk.wav', priority=PRIORITY_WALK)
+
+        self._master_volume = 1.0
+        self._collect_effects()
+
+    def _collect_effects(self):
+        self._effects = [
+            v for v in self.__dict__.values()
+            if isinstance(v, SoundEffect)
+        ]
+
+    def set_master_volume(self, volume: float):
+        self._master_volume = max(0.0, min(1.0, float(volume)))
+        for fx in self._effects:
+            fx.sfx.set_volume(self._master_volume)

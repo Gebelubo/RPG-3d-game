@@ -54,3 +54,4 @@ MARLUXIA_GLB_PATH       = os.path.join(_HERE, "assets", "models", "Marluxia", "m
 
 SHADER_DIR = os.path.join(_HERE, "assets", "shaders")
 SAVE_PATH  = os.path.join(_HERE, "savegame.json")
+SETTINGS_PATH = os.path.join(_HERE, "settings.json")

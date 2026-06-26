@@ -47,6 +47,9 @@ from src.db.spell import SPELL_DB, SPELL_LIST
 from src.db.item import ITEM_DB
 
 from src.game.helper import Helper
+from src.controls_screen import draw_controls_screen
+from src.settings_screen import draw_settings_screen
+from src.config.audio_settings import AudioSettings, VOLUME_STEP
 
 
 from src.game.floor_state import FloorState
@@ -65,11 +68,13 @@ class Game:
     FLOOR_BOSS     = 6
 
     def __init__(self):
+        self.audio_settings = AudioSettings.load()
         self._init_window()
         self._init_gl()
         self._init_shaders()
         self._init_game_state()
         self._helper = Helper()
+        self.audio_settings.apply(self)
         
 
     # ── Init ─────────────────────────────────────────────────────────────────
@@ -78,7 +83,6 @@ class Game:
         pygame.init(); pygame.font.init()
         pygame.mixer.set_num_channels(32)
         pygame.mixer.music.load(os.path.join(_HERE, "assets", "music", "menu.mp3"))
-        pygame.mixer.music.set_volume(0.2)
         pygame.mixer.music.play(-1, start=3.0)
         self.sounds = Effects()
         pygame.display.set_mode((SCREEN_W, SCREEN_H), DOUBLEBUF|OPENGL|RESIZABLE)
@@ -167,6 +171,8 @@ class Game:
         self.notifications = []
         self.max_phase = 0
         self.first_msg = False
+        self._menu_anim_t = 0.0
+        self._settings_row = 0
         self._push_title_menu()
 
     # ── Cena base ─────────────────────────────────────────────────────────────
@@ -1322,12 +1328,43 @@ class Game:
         def quit_game():
             pygame.quit(); sys.exit(0)
 
+        def show_controls():
+            self.game_mode = "controls"
+            self.input.capture_mouse(False)
+
+        def show_settings():
+            self._settings_row = 0
+            self.game_mode = "settings"
+            self.input.capture_mouse(False)
+
         self.menus.push(Menu("Re:Oblivion of Memories", [
-            MenuItem("Nova Partida", start),
-            MenuItem("Continuar",    continue_game),
-            MenuItem("Sair",         quit_game),
+            MenuItem("Nova Partida",   start),
+            MenuItem("Continuar",      continue_game),
+            MenuItem("Controles",      show_controls),
+            MenuItem("Configurações",  show_settings),
+            MenuItem("Sair",           quit_game),
         ]))
         self.game_mode = "menu"
+
+    def _close_controls_screen(self):
+        self.game_mode = "menu"
+        self.input.capture_mouse(False)
+
+    def _close_settings_screen(self):
+        self.audio_settings.save()
+        self.game_mode = "menu"
+        self.input.capture_mouse(False)
+
+    def _adjust_settings_volume(self, delta: float):
+        if self._settings_row == 0:
+            changed = self.audio_settings.adjust_music(delta)
+        else:
+            changed = self.audio_settings.adjust_sfx(delta)
+            if changed:
+                self.sounds.subaru_punch.play()
+        if changed:
+            self.audio_settings.apply(self)
+            self.audio_settings.save()
 
     def _push_pause_menu(self):
         def resume():
@@ -1346,7 +1383,6 @@ class Game:
         self.game_mode = "menu"; self.input.capture_mouse(False)
 
     def _trigger_death(self):
-        self.sounds.subaru_death.sfx.set_volume(1.0)
         self.sounds.subaru_death.play()
 
         self.game_mode = "death"; self.death_timer = 3.5; self.input.capture_mouse(False)
@@ -2008,6 +2044,26 @@ class Game:
                 self.credits_active = False; self.game_mode = "menu"; self._push_title_menu()
             return
 
+        if self.game_mode == "controls":
+            if (self.input.key_pressed("escape")
+                    or self.input.key_pressed("return")
+                    or self.input.key_pressed("enter")):
+                self._close_controls_screen()
+            return
+
+        if self.game_mode == "settings":
+            if self.input.key_pressed("up") or self.input.key_pressed("w"):
+                self._settings_row = max(0, self._settings_row - 1)
+            if self.input.key_pressed("down") or self.input.key_pressed("s"):
+                self._settings_row = min(1, self._settings_row + 1)
+            if (self.input.key_pressed("left") or self.input.key_pressed("a")):
+                self._adjust_settings_volume(-VOLUME_STEP)
+            if (self.input.key_pressed("right") or self.input.key_pressed("d")):
+                self._adjust_settings_volume(VOLUME_STEP)
+            if self.input.key_pressed("escape"):
+                self._close_settings_screen()
+            return
+
         if self.game_mode == "rhythm":
             lane_map = {"left": 0, "down": 1, "up": 2, "right": 3}
             for lane_name, lane_idx in lane_map.items():
@@ -2311,6 +2367,10 @@ class Game:
             if self.death_timer <= 0.0: self._respawn(); return
         if self.game_mode == "credits":
             self.credits_y -= 40 * dt; self.credits_timer += dt; return
+        if self.game_mode in ("menu", "controls", "settings"):
+            self._menu_anim_t += dt
+            if self.game_mode in ("controls", "settings"):
+                return
         if getattr(self, '_fading', False):
             self._update_fade(dt)
             if self.game_mode == "fade": return
@@ -4308,6 +4368,19 @@ class Game:
     def _draw_hud(self):
         h = self.hud; sw = self.screen_w; sh = self.screen_h
 
+        if self.game_mode == "controls":
+            self._draw_menu_background(h)
+            draw_controls_screen(h, sw, sh)
+            self._draw_menu_footer(h, sw, sh)
+            return
+
+        if self.game_mode == "settings":
+            self._draw_menu_background(h)
+            draw_settings_screen(h, sw, sh, self.audio_settings,
+                                 self._settings_row, self._menu_anim_t)
+            self._draw_menu_footer(h, sw, sh)
+            return
+
         if self.game_mode == "story":
             h.draw_rect(0, 0, sw, sh, (0.0, 0.0, 0.05))
             if self.story_idx < len(self.story_lines):
@@ -4531,10 +4604,11 @@ class Game:
             self._draw_menu_background(h)
 
         if self.game_mode in ("menu", "combat"):
-            pw, ph = 340, 240
-            px = sw//2 - pw//2; py = sh//2 - ph//2
-            h.draw_bar(px-12, py-12, pw+24, ph+24, 1.0, (0.04,0.04,0.10), (0.04,0.04,0.10))
-            self.menus.draw(h, px, py)
+            pw, ph = 400, 375
+            px = sw // 2 - pw // 2
+            py = int(sh * 0.36)
+            self.menus.draw(h, px, py, pw, ph, anim_t=self._menu_anim_t)
+            self._draw_menu_footer(h, sw, sh)
 
         if self.combat:
             h.draw_combat_log(self.combat.log.recent(5))
@@ -4849,6 +4923,47 @@ class Game:
                 h.draw_rect(lx + 7, ny_head - note_h // 2 + 3,
                             lane_w - 14, note_h - 6,
                             (1.0, 0.97, 0.70), alpha=0.70)
+    def _draw_tower_silhouette(self, hud, tx, ground_y, segments, color=(0.035, 0.03, 0.07)):
+        """Desenha uma torre em silhueta a partir de segmentos (largura, altura)."""
+        y_cur = ground_y
+        for w, h in segments:
+            y_cur -= h
+            hud.draw_rect(tx - w / 2, y_cur, w, h, color)
+        return y_cur
+
+    def _draw_menu_footer(self, hud, sw, sh):
+        """Barra inferior com citação e indicadores dos andares."""
+        bar_h = 56
+        bar_y = sh - bar_h
+        hud.draw_gradient_rect(0, bar_y - 24, sw, bar_h + 24,
+                               (0.0, 0.0, 0.0), (0.06, 0.04, 0.10), steps=8, alpha=0.72)
+
+        hud.draw_rect(0, bar_y, sw, 2, (0.55, 0.42, 0.18), alpha=0.9)
+        hud.draw_gem(sw * 0.12, bar_y + 1, 4, (0.78, 0.64, 0.28), sides=4, highlight=False)
+        hud.draw_gem(sw * 0.88, bar_y + 1, 4, (0.78, 0.64, 0.28), sides=4, highlight=False)
+
+        quotes = [
+            "Memórias perdidas aguardam no topo da torre.",
+            "Sete andares separam você do esquecimento",
+            "Sempre vai existir uma luz que nunca se apaga.",
+        ]
+        q_idx = int(self._menu_anim_t / 5.0) % len(quotes)
+        hud.draw_text(quotes[q_idx], sw // 2, bar_y + 14, 14,
+                      (200, 185, 220), center=True, shadow=True)
+
+        # Ícones dos 7 andares
+        floor_labels = ["E", "1", "2", "3", "4", "5", "B"]
+        total_w = len(floor_labels) * 34
+        start_x = sw // 2 - total_w // 2
+        for i, lbl in enumerate(floor_labels):
+            cx = start_x + i * 34 + 17
+            cy = bar_y + 38
+            lit = (i + int(self._menu_anim_t * 0.8)) % 7 == i
+            col = (0.55, 0.38, 0.85) if lit else (0.25, 0.20, 0.35)
+            hud.draw_medallion(cx, cy, 10, col, ring_color=(0.15, 0.10, 0.25))
+            hud.draw_text(lbl, cx, cy + 1, 10, (230, 220, 255) if lit else (150, 145, 170),
+                          bold=True, center=True)
+
     def _draw_menu_background(self, hud):
         """
         Tela de título: céu noturno em gradiente contínuo, campo de estrelas com
@@ -4856,51 +4971,124 @@ class Game:
         estandarte dourado — clima de fantasia medieval / Re:Zero.
         """
         sw, sh = self.screen_w, self.screen_h
+        t = self._menu_anim_t
 
-        # ── Céu noturno (gradiente único, sem emendas visíveis) ────────────────
+        # ── Céu noturno ───────────────────────────────────────────────────────
         hud.draw_gradient_rect(0, 0, sw, sh, (0.02, 0.02, 0.07), (0.12, 0.08, 0.10), steps=16)
 
-        # ── Lua / orbe arcano no fundo ──────────────────────────────────────────
-        moon_cx, moon_cy, moon_r = sw * 0.84, sh * 0.16, sh * 0.055
+        # Aurora suave no horizonte (preenche o meio/baixo do céu)
+        aurora_y = int(sh * 0.42)
+        aurora_h = int(sh * 0.22)
+        for i in range(5):
+            band_y = aurora_y + i * (aurora_h // 5)
+            band_h = aurora_h // 5 + 2
+            alpha = 0.06 + 0.03 * abs(math.sin(t * 0.4 + i * 0.9))
+            hue = (0.18 + i * 0.04, 0.08 + i * 0.02, 0.28 + i * 0.05)
+            hud.draw_rect(0, band_y, sw, band_h, hue, alpha=alpha)
+
+        # ── Lua / orbe arcano ─────────────────────────────────────────────────
+        moon_cx = sw * 0.84 + math.sin(t * 0.25) * 6
+        moon_cy = sh * 0.14 + math.cos(t * 0.18) * 4
+        moon_r = sh * 0.055
         hud.draw_medallion(moon_cx, moon_cy, moon_r, (0.85, 0.85, 0.95), ring_color=(0.30, 0.30, 0.50))
         hud.draw_gem(moon_cx, moon_cy, moon_r * 0.4, (0.95, 0.95, 1.0), sides=14, highlight=False)
 
-        # ── Campo de estrelas (PRNG determinístico — mesmo céu a cada frame) ───
+        # ── Estrelas ──────────────────────────────────────────────────────────
         rnd = 1
         def _next():
             nonlocal rnd
             rnd = (rnd * 1664525 + 1013904223) & 0xFFFFFFFF
             return rnd
 
-        for _ in range(140):
+        for _ in range(160):
             sx = (_next() >> 8) % sw
-            sy = (_next() >> 8) % int(sh * 0.60)
-            depth = ((_next() >> 16) % 100) / 100.0      # 0 = distante/fraca · 1 = próxima/brilhante
+            sy = (_next() >> 8) % int(sh * 0.62)
+            depth = ((_next() >> 16) % 100) / 100.0
             size = 1 + round(depth * 2)
             b = 0.55 + depth * 0.45
-            col = (min(1.0, b), min(1.0, b), min(1.0, b + (0.08 if depth > 0.7 else 0.0)))
+            twinkle = 0.85 + 0.15 * math.sin(t * 2.0 + sx * 0.05 + sy * 0.03)
+            col = (min(1.0, b * twinkle), min(1.0, b * twinkle),
+                   min(1.0, (b + (0.08 if depth > 0.7 else 0.0)) * twinkle))
             hud.draw_rect(sx, sy, size, size, col, alpha=0.5 + depth * 0.5)
             if depth > 0.88:
-                # cintilação: pequena cruz de luz nas estrelas mais brilhantes
-                hud.draw_rect(sx - 2, sy, 5, 1, col, alpha=0.45)
-                hud.draw_rect(sx, sy - 2, 1, 5, col, alpha=0.45)
+                hud.draw_rect(sx - 2, sy, 5, 1, col, alpha=0.45 * twinkle)
+                hud.draw_rect(sx, sy - 2, 1, 5, col, alpha=0.45 * twinkle)
 
-        # ── Silhueta da torre ao fundo, à esquerda ──────────────────────────────
-        ground_y = sh * 0.66
-        tx = sw * 0.16
-        segments = [
-            (sw * 0.075, sh * 0.11),
-            (sw * 0.055, sh * 0.095),
-            (sw * 0.040, sh * 0.085),
-            (sw * 0.026, sh * 0.075),
+        # ── Montanhas distantes ───────────────────────────────────────────────
+        ground_y = sh * 0.72
+        mtn_base = int(ground_y)
+        peaks = [
+            (sw * 0.05, 0.12), (sw * 0.18, 0.18), (sw * 0.32, 0.10),
+            (sw * 0.55, 0.20), (sw * 0.70, 0.14), (sw * 0.85, 0.17), (sw * 0.95, 0.11),
         ]
-        y_cur = ground_y
-        for w, h in segments:
-            y_cur -= h
-            hud.draw_rect(tx - w / 2, y_cur, w, h, (0.035, 0.03, 0.07))
-        hud.draw_gem(tx, y_cur - 6, 5, (0.55, 0.82, 1.0), sides=8)  # luz arcana no topo
+        for i in range(len(peaks) - 1):
+            x0, h0 = peaks[i]
+            x1, h1 = peaks[i + 1]
+            mid_x = (x0 + x1) / 2
+            peak_h = max(h0, h1) * sh
+            hud.draw_poly(
+                [(x0, mtn_base), (mid_x, mtn_base - peak_h), (x1, mtn_base)],
+                (0.04, 0.035, 0.07), alpha=0.95,
+            )
 
-        # ── Estandarte do título ────────────────────────────────────────────────
+        # ── Chão e neblina ────────────────────────────────────────────────────
+        hud.draw_gradient_rect(0, ground_y, sw, sh - ground_y,
+                               (0.07, 0.05, 0.12), (0.02, 0.015, 0.04), steps=10)
+        for layer in range(4):
+            mist_y = ground_y - 20 - layer * 28 + math.sin(t * 0.3 + layer) * 6
+            mist_a = 0.04 + layer * 0.015
+            hud.draw_rect(0, mist_y, sw, 36, (0.45, 0.35, 0.65), alpha=mist_a)
+
+        # ── Caminho iluminado até a torre central ─────────────────────────────
+        path_top = ground_y - 8
+        path_bot = sh - 60
+        hud.draw_poly(
+            [(sw * 0.42, path_bot), (sw * 0.58, path_bot), (sw * 0.54, path_top), (sw * 0.46, path_top)],
+            (0.12, 0.09, 0.16), alpha=0.85,
+        )
+        hud.draw_poly(
+            [(sw * 0.47, path_bot), (sw * 0.53, path_bot), (sw * 0.51, path_top), (sw * 0.49, path_top)],
+            (0.22, 0.16, 0.30), alpha=0.35 + 0.08 * abs(math.sin(t * 1.2)),
+        )
+
+        # ── Torres em silhueta ────────────────────────────────────────────────
+        # Torre esquerda (menor)
+        tx_l = sw * 0.12
+        seg_l = [(sw * 0.045, sh * 0.09), (sw * 0.032, sh * 0.075), (sw * 0.022, sh * 0.06)]
+        top_l = self._draw_tower_silhouette(hud, tx_l, ground_y, seg_l)
+        hud.draw_gem(tx_l, top_l - 5, 4, (0.45, 0.70, 1.0), sides=8)
+
+        # Torre central (Pleiades — maior, atrás do menu)
+        tx_c = sw * 0.50
+        seg_c = [
+            (sw * 0.11, sh * 0.16), (sw * 0.085, sh * 0.13),
+            (sw * 0.065, sh * 0.11), (sw * 0.045, sh * 0.09), (sw * 0.028, sh * 0.07),
+        ]
+        top_c = self._draw_tower_silhouette(hud, tx_c, ground_y, seg_c, color=(0.045, 0.038, 0.08))
+        hud.draw_gem(tx_c, top_c - 8, 7, (0.55, 0.82, 1.0), sides=8)
+        # Janelas acesas na torre central
+        for wy_off in range(3):
+            wy = ground_y - sh * (0.08 + wy_off * 0.06)
+            glow = 0.5 + 0.5 * math.sin(t * 1.8 + wy_off * 1.4)
+            hud.draw_rect(tx_c - 4, wy, 8, 10, (0.9, 0.75, 0.35), alpha=0.25 + 0.35 * glow)
+
+        # Torre direita
+        tx_r = sw * 0.88
+        seg_r = [(sw * 0.05, sh * 0.10), (sw * 0.035, sh * 0.085), (sw * 0.024, sh * 0.07)]
+        top_r = self._draw_tower_silhouette(hud, tx_r, ground_y, seg_r)
+        hud.draw_gem(tx_r, top_r - 5, 4, (0.70, 0.40, 0.95), sides=8)
+
+        # ── Runas flutuantes (partículas animadas) ────────────────────────────
+        for i in range(12):
+            phase = t * 0.55 + i * 1.7
+            rx = sw * (0.15 + (i * 0.065) % 0.7) + math.sin(phase) * 18
+            ry = ground_y - 40 - (i % 5) * 35 + math.cos(phase * 0.8) * 12
+            rune_a = 0.25 + 0.2 * abs(math.sin(phase * 1.3))
+            rune_col = (0.50, 0.35, 0.85) if i % 3 else (0.35, 0.55, 0.90)
+            hud.draw_gem(rx, ry, 3 + (i % 2), rune_col, sides=6, highlight=False)
+            hud.draw_rect(rx - 5, ry, 10, 1, rune_col, alpha=rune_a * 0.5)
+
+        # ── Estandarte do título ──────────────────────────────────────────────
         title_w = min(560, sw * 0.62)
         title_h = 64
         title_y = int(sh * 0.06)

@@ -9,6 +9,11 @@ from typing import Callable, List, Optional
 
 import pygame
 
+from src.hud.hud import (
+    AMETHYST_F, BRONZE_F, CRIMSON_F, EMERALD_F, GOLD_DARK_F, GOLD_F,
+    PARCHMENT_DK_F, SAPPHIRE_F,
+)
+
 
 @dataclass
 class MenuItem:
@@ -22,22 +27,46 @@ class Menu:
         self.items = list(items)
 
 
+# Dica exibida abaixo dos itens quando a opção está selecionada
+_ITEM_HINTS = {
+    "Nova Partida": "Inicie sua jornada em Castle Oblivion do zero.",
+    "Continuar":    "Retome a jornada a partir do último save.",
+    "Controles":      "Consulte teclas, magias e mecânicas do jogo.",
+    "Configurações":  "Ajuste o volume da música e dos efeitos sonoros.",
+    "Sair":           "Encerrar Re:Oblivion of Memories.",
+    "Salvar":       "Gravar progresso no slot atual.",
+    "Menu Principal": "Voltar à tela de título.",
+}
+
+# Cor do ícone (medalhão) por rótulo
+_ITEM_GEM = {
+    "Nova Partida":   EMERALD_F,
+    "Continuar":      SAPPHIRE_F,
+    "Controles":      AMETHYST_F,
+    "Configurações":  (0.72, 0.58, 0.22),
+    "Sair":           CRIMSON_F,
+    "Salvar":         SAPPHIRE_F,
+    "Menu Principal": AMETHYST_F,
+}
+
+
 class MenuManager:
     def __init__(self):
         self._stack: List[Menu] = []
         self._sel_stack: List[int] = []
 
-    # ── Stack ops
     def push(self, menu: Menu):
         self._stack.append(menu)
         self._sel_stack.append(0)
 
     def pop(self):
         if self._stack:
-            self._stack.pop(); self._sel_stack.pop()
+            self._stack.pop()
+            self._sel_stack.pop()
 
     def clear(self):
-        self._stack.clear(); self._sel_stack.clear()
+        self._stack.clear()
+        self._sel_stack.clear()
 
     def top(self) -> Optional[Menu]:
         return self._stack[-1] if self._stack else None
@@ -45,55 +74,112 @@ class MenuManager:
     def selection_index(self) -> int:
         return self._sel_stack[-1] if self._sel_stack else 0
 
-    # ── Input handling (expects `engine.input_manager.InputManager` instance)
     def handle_input(self, inp):
-        if not self._stack: return
+        if not self._stack:
+            return
         sel = self._sel_stack[-1]
-        # navigate
         if inp.key_pressed("up") or inp.key_pressed("w"):
             sel = max(0, sel - 1)
             self._sel_stack[-1] = sel
         if inp.key_pressed("down") or inp.key_pressed("s"):
             sel = min(len(self._stack[-1].items) - 1, sel + 1)
             self._sel_stack[-1] = sel
-        # activate
         if inp.key_pressed("return") or inp.key_pressed("enter"):
             cur = self._stack[-1].items[sel]
             try:
                 cur.action()
             except Exception:
                 pass
-        # cancel/back
         if inp.key_pressed("escape"):
-            # if stack has more than one menu, pop; otherwise do nothing here
             if len(self._stack) > 1:
                 self.pop()
 
-    # ── Drawing (uses `HUD` instance to render into the existing GL HUD)
-    def draw(self, hud, px: int, py: int, pw: int = 340, ph: int = 240):
-        # background panel
-        hud.draw_rect(px, py, pw, ph, (0.06, 0.06, 0.10))
-        hud.draw_rect(px, py, pw, 2, (0.25, 0.18, 0.4))
-
+    def draw(self, hud, px: int, py: int, pw: int = 400, ph: int = 375, anim_t: float = 0.0):
         menu = self.top()
         if not menu:
             return
 
-        title = menu.title
-        hud.draw_text(title, px + 16, py + 8, 20, (240, 240, 255), bold=True)
+        # Moldura medieval (mesmo estilo do HUD in-game)
+        hud.draw_frame(
+            px, py, pw, ph,
+            bg_color=PARCHMENT_DK_F,
+            border_color=GOLD_F,
+            border_dark=GOLD_DARK_F,
+            thickness=3,
+            gem_color=BRONZE_F,
+        )
 
-        # draw items
-        item_y = py + 44
+        # Faixa de título
+        banner_h = 32
+        banner_y = py + 10
+        hud.draw_banner(
+            menu.title, px + pw / 2, banner_y,
+            w=min(pw - 40, 340), h=banner_h,
+            base_color=(0.14, 0.08, 0.26),
+            edge_color=(0.42, 0.12, 0.38),
+            text_color=(235, 220, 255),
+            text_size=15,
+            notch=12,
+        )
+
+        # Divisor sob o título
+        div_y = banner_y + banner_h + 10
+        hud.draw_rect(px + 24, div_y, pw - 48, 1, GOLD_DARK_F, alpha=0.85)
+        hud.draw_gem(px + 24, div_y, 3, GOLD_F, sides=4, highlight=False)
+        hud.draw_gem(px + pw - 24, div_y, 3, GOLD_F, sides=4, highlight=False)
+
+        # Itens
+        item_y = div_y + 16
+        item_h = 42
+        sel_idx = self.selection_index()
+
         for i, it in enumerate(menu.items):
-            is_sel = (i == self.selection_index())
-            color_bg = (0.12, 0.12, 0.18) if not is_sel else (0.22, 0.16, 0.36)
-            hud.draw_rect(px + 12, item_y - 6, pw - 24, 36, color_bg)
-            hud.draw_text(it.label, px + 24, item_y, 16, (230, 230, 240) if is_sel else (200, 200, 210))
-            item_y += 44
+            is_sel = i == sel_idx
+            row_x = px + 18
+            row_w = pw - 36
+            row_y = item_y - 4
 
-        # footer
-        hud.draw_text("Use ↑/↓ e Enter para selecionar. ESC volta.", px + 16, py + ph - 28, 12, (170, 170, 190))
+            if is_sel:
+                # Brilho pulsante na seleção
+                pulse = 0.55 + 0.12 * abs((anim_t * 2.5) % 2.0 - 1.0)
+                hud.draw_rect(row_x, row_y, row_w, item_h, (0.22, 0.14, 0.38), alpha=pulse)
+                hud.draw_rect(row_x, row_y, 3, item_h, GOLD_F, alpha=0.95)
+                hud.draw_rect(row_x + row_w - 3, row_y, 3, item_h, GOLD_F, alpha=0.95)
+            else:
+                hud.draw_rect(row_x, row_y, row_w, item_h, (0.10, 0.08, 0.14), alpha=0.65)
+
+            gem_col = _ITEM_GEM.get(it.label, BRONZE_F)
+            gem_cx = row_x + 22
+            gem_cy = row_y + item_h / 2
+            hud.draw_medallion(gem_cx, gem_cy, 11, gem_col)
+
+            if is_sel:
+                hud.draw_text("›", row_x + 38, item_y + 2, 20, (255, 220, 140), bold=True)
+                label_col = (255, 248, 230)
+            else:
+                label_col = (195, 190, 210)
+
+            hud.draw_text(it.label, row_x + 52, item_y + 4, 17, label_col, bold=is_sel)
+            item_y += item_h + 4
+
+        # Área de dica (preenche o centro-inferior do painel)
+        hint_y = item_y + 6
+        hint_box_h = py + ph - hint_y - 36
+        if hint_box_h > 20:
+            hud.draw_rect(px + 22, hint_y, pw - 44, hint_box_h, (0.06, 0.05, 0.10), alpha=0.55)
+            hud.draw_rect(px + 22, hint_y, pw - 44, 1, GOLD_DARK_F, alpha=0.5)
+
+            sel_label = menu.items[sel_idx].label
+            hint = _ITEM_HINTS.get(sel_label, "")
+            if hint:
+                hud.draw_text(hint, px + pw // 2, hint_y + hint_box_h // 2 - 4,
+                              13, (180, 175, 200), center=True)
+
+        # Rodapé do painel
+        hud.draw_text(
+            "↑ ↓ navegar  ·  Enter confirmar  ·  Esc voltar",
+            px + pw // 2, py + ph - 18, 11, (140, 135, 160), center=True,
+        )
 
 
-# convenience exports
 __all__ = ["Menu", "MenuItem", "MenuManager"]
