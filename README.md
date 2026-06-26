@@ -1,141 +1,100 @@
-# RPG3D – Base Engine
+# Re:Oblivion of Memories
 
-Motor 3D + base de jogo RPG em Python puro + OpenGL 4.0.
+RPG 3D em Python inspirado em *Re:Zero* e *Kingdom Hearts*. Você controla **Natsuki Subaru** enquanto sobe o **Caslte Oblivion**, enfrentando Heartless, resolvendo puzzles, passando por minigames e duelando contra **Marluxia** no confronto final.
 
-## Dependências
+O jogo roda em uma janela OpenGL (1280×720) com modelos animados GLB, combate em tempo real, sistema de magias, inventário e progressão por andares.
 
-```
-pip install pygame PyOpenGL PyOpenGL_accelerate numpy Pillow
-```
+---
 
-## Executar
+## Documentação
 
-```
-cd rpg3d/
+| Documento | Descrição |
+|-----------|-----------|
+| [Como rodar o jogo](docs/COMO-RODAR.md) | Requisitos, instalação, execução e solução de problemas |
+| [Arquitetura do projeto](docs/ARQUITETURA.md) | Camadas do código, engine 3D, fluxo do game loop e dependências |
+| [Conteúdo e gameplay](docs/JOGO.md) | Andares, mecânicas, personagens, magias, itens e história |
+| [Controles](docs/CONTROLES.md) | Teclado, mouse, menus e atalhos |
+
+---
+
+### Vídeos
+
+[![GamePlay](https://img.youtube.com/vi/hrsclWouLBA/maxresdefault.jpg)](https://youtu.be/hrsclWouLBA?si=R3HvN0UXci0uFbb4)
+[![Guia para rodar e code review](https://img.youtube.com/vi/CzqVb_gcgOo/hqdefault.jpg)](https://youtu.be/RLq_CcwbXZY)
+
+
+## Início rápido
+
+```bash
+python -m venv .venv
+.venv\Scripts\activate        # Windows
+pip install -r requirements.txt
 python main.py
 ```
 
----
-
-## Controles
-
-| Tecla | Ação |
-|---|---|
-| W A S D | Mover câmera |
-| Mouse | Olhar ao redor (capturado em modo jogo) |
-| E | Iniciar combate |
-| ESC | Menu de pausa / liberar mouse |
-| F1 | Alternar wireframe (debug) |
-| ↑ ↓ Enter | Navegar menus |
+Requisitos: **Python 3.10+**, placa com suporte a **OpenGL 3.x**.
 
 ---
 
-## Arquitetura
+## Visão geral
 
 ```
-rpg3d/
-├── main.py                 ← Entry point, Game loop
-├── hud.py                  ← HUD 2D (OpenGL quads + texto)
-├── menu.py                 ← Sistema de menus (stack-based)
-├── requirements.txt
-│
-├── engine/
-│   ├── math3d.py           ← Álgebra linear (NumPy puro)
-│   ├── shader.py           ← Compilação/uso de shaders GLSL
-│   ├── obj_loader.py       ← Leitor próprio de .obj / .mtl
-│   ├── mesh.py             ← GPU mesh (VAO/VBO/IBO) + geo procedural
-│   ├── texture.py          ← Carregamento de texturas (Pillow → GL)
-│   ├── camera.py           ← Câmera livre FPS
-│   ├── scene.py            ← SceneNode, Scene, PointLight
-│   └── input_manager.py   ← Teclado + mouse via pygame (só eventos)
-│
-├── game/
-│   └── rpg_data.py         ← Stats, Inventory, CombatSystem, Player
-│
-└── assets/
-    ├── shaders/
-    │   ├── phong.vert/frag  ← Shader Phong (iluminação)
-    │   └── unlit.vert/frag  ← Shader sem iluminação (HUD, debug)
-    ├── models/              ← Coloque arquivos .obj aqui
-    └── textures/            ← Texturas extras (.png, .jpg)
+main.py  →  Game (game_main.py)  →  loop Pygame + render OpenGL
+                ├── Engine (cena, câmera, shaders, GLTF)
+                ├── Entidades (player, inimigos, stats)
+                ├── HUD + menus
+                └── 7 andares da torre (entry → boss)
 ```
+
+| Andar | Tema principal |
+|-------|----------------|
+| 0 — Entrada | Tutorial de combate, porta e escadas |
+| 1 — Puzzle | Fragmentos de mural, parkour, caixa empurrável |
+| 2 — Aerial | Heartless terrestres e voadores |
+| 3 — Ritmo | Minigame rítmico no obelisco |
+| 4 — Corredor | Ondas de inimigos (gauntlet) |
+| 5 — Descanso | Cura total, save automático, relatórios de Marluxia |
+| 6 — Boss | Marluxia + cutscene da Emilia |
 
 ---
 
-## Conformidade com as constraints
+## Estrutura do repositório
 
-| Requisito | Como foi implementado |
-|---|---|
-| OpenGL ≥ 4.0 puro | `#version 400 core` em todos os shaders; só `glDraw*`, `glBind*`, etc. |
-| Projeção perspectiva | `engine/math3d.py → perspective()` + `Camera.projection_matrix()` |
-| Câmera livre (FPS) | `engine/camera.py` – WASD + mouse look |
-| Iluminação Phong | `assets/shaders/phong.vert/frag` – ambiente + difusa + especular |
-| Fonte de luz animada | `PointLight.orbit = True` – orbita a cena em `Scene.update()` |
-| Objeto animado | Cubo gira em X e Y via `SceneNode.set_animator()` |
-| Objeto com textura | Esfera (enemy) + chão com `ProceduralTexture` |
-| Objeto com cor sólida | Cubo usa `uBaseColor` sem textura |
-| Leitor OBJ próprio | `engine/obj_loader.py` – parse completo v/vt/vn/f/mtllib/usemtl |
-| Contexto gráfico via pygame | `pygame.display.set_mode(DOUBLEBUF \| OPENGL)` – só inicialização |
-| Álgebra linear via NumPy | `engine/math3d.py` exclusivamente |
-| Eventos por pygame | `engine/input_manager.py` usa só `pygame.event.get()` |
-
----
-
-## Como adicionar conteúdo
-
-### Adicionar modelo OBJ
-
-Coloque o `.obj` (e `.mtl` + texturas) em `assets/models/`.
-O jogo carrega automaticamente ao iniciar.
-
-```python
-# Ou carregue manualmente em _init_scene():
-from engine.obj_loader import OBJLoader
-from engine.mesh import Mesh
-datas = OBJLoader().load("assets/models/meu_modelo.obj")
-for md in datas:
-    node = SceneNode("meu_obj", mesh=Mesh(md), position=(0, 0, -5))
-    self.scene.add(node)
 ```
-
-### Criar novo inimigo
-
-```python
-from game.rpg_data import Stats
-goblin = Stats(name="Goblin", level=2, max_hp=60, hp=60,
-               atk=8, defense=3, spd=12)
-combat = player.start_combat(goblin)
-```
-
-### Animar qualquer nó
-
-```python
-def my_anim(node, dt):
-    node.rotation[1] += 45 * dt   # gira 45°/s no eixo Y
-    node.position[1] = math.sin(time.time())
-
-node.set_animator(my_anim)
-```
-
-### Adicionar item ao banco
-
-```python
-from game.rpg_data import ITEM_DB, Item
-ITEM_DB["mana_potion"] = Item(
-    "mana_potion", "Mana Potion",
-    "Restaura 50 MP.", heal_hp=0, value=20
-)
+RPG-3d-game/
+├── main.py                 # Ponto de entrada
+├── requirements.txt        # Dependências Python
+├── docs/                   # Documentação detalhada
+└── src/
+    ├── config/             # Constantes, caminhos, cache
+    ├── engine/             # Motor 3D (OpenGL, GLTF, cena)
+    ├── entities/           # Player, inimigos, itens, stats
+    ├── db/                 # Banco de dados estático (magias, itens, personagens)
+    ├── game/               # Lógica principal (andares, combate, helper)
+    ├── hud/                # Interface na tela
+    ├── menu.py             # Sistema de menus
+    ├── assets/             # Modelos, texturas, música, SFX
+    └── tools/              # Utilitários (ex.: geração de texturas)
 ```
 
 ---
 
-## Próximos passos sugeridos
+## Stack tecnológica
 
-- [ ] Adicionar inimigos com pathfinding simples
-- [ ] Sistema de diálogos (NPC com árvore de diálogo)
-- [ ] Skybox (cubo invertido com textura de céu)
-- [ ] Mapa com terreno gerado proceduralmente (heightmap)
-- [ ] Sistema de save/load (JSON)
-- [ ] Múltiplos inimigos por combate
-- [ ] Efeitos de partículas (faíscas, fogo)
-- [ ] Tela de inventário completa com ícones
+- **Pygame** — janela, input, áudio
+- **PyOpenGL** — renderização 3D (Phong + skinning)
+- **NumPy** — matemática e matrizes
+- **Pillow** — carregamento de imagens
+- **pygltflib** — leitura de modelos GLB/GLTF
+
+---
+
+## Licença
+
+Projeto sob [MIT License](LICENSE) — Copyright (c) 2026 Gebelubo.
+
+---
+
+## Créditos e referências
+
+Personagens e temas fazem referência a *Re:Zero* e *Kingdom Hearts*. Modelos 3D animados exportados via Mixamo; assets de áudio e imagem incluídos em `src/assets/`.
