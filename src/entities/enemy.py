@@ -654,6 +654,60 @@ class MarluxiaBoss(Enemy):
             self.state = "hit"
         # Boss só morre de verdade quando game_main liberar após o enrage
         return actual
+    
+
+    def execute_windup_attack(self, player_stats) -> int:
+        """Executa o ataque pesado após o wind-up terminar."""
+        if self.dead:
+            return 0
+        shielded = getattr(player_stats, 'is_shielded', False)
+        if shielded:
+            self.attack_cooldown = self.light_attack_cooldown
+            self.is_attacking = False
+            self.attack_timer = 0.0
+            self._pending_damage = 0
+            return 0
+        
+        # Fecha a janela de parry
+        self.parry_window_open = False
+        
+        # Se o parry foi bem sucedido, NÃO aplica dano
+        if self.parry_successful:
+            self._pending_damage = 0
+            self.parry_successful = False
+            self.is_winding_up = False
+            self.can_windup = False
+            self.attack_cooldown = self._windup_cooldown
+            self.is_attacking = True
+            self.attack_timer = 0.5
+            self.receive_hit(22.2)     
+            # Toca animação de stun/parry
+            anim = getattr(self, '_anim', None)
+            if anim is not None:
+                anim.play("stun")
+                self._anim_state = "stun"
+            return 0
+        
+        # Aplica o dano
+        dmg = self._pending_damage
+        self._pending_damage = 0
+        
+        if dmg > 0:
+            player_stats.hp = max(0, player_stats.hp - dmg)
+        
+        # Toca animação de ataque pesado
+        anim = getattr(self, '_anim', None)
+        if anim is not None:
+            anim.play("heavyattack")
+            self._anim_state = "heavyattack"
+        
+        self.attack_cooldown = self._windup_cooldown
+        self.is_winding_up = False
+        self.can_windup = False
+        self.is_attacking = True
+        self.attack_timer = 0.6
+        
+        return dmg
 
 # Alias para retrocompatibilidade com game_main (usa Boss("Marluxia"))
 Boss = MarluxiaBoss

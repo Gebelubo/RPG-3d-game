@@ -2914,7 +2914,7 @@ class Game:
                 dz = bz - p.world_pos[2]
                 if math.sqrt(dx*dx + dz*dz) < 1.8:
                     self.notifications.append({
-                    "text": "Ataque a caixa para movimenta-la",
+                    "text": "Ataque a caixa para mover",
                     "x": self.screen_w // 2,
                     "y": 45,
                     "size": 25,
@@ -3150,8 +3150,6 @@ class Game:
         elif self.current_floor == self.FLOOR_BOSS:
             boss = getattr(self.floor_state, 'boss', None)
             if boss is not None and not boss.dead:
-            
-                # Fase do boss
                 phase = getattr(boss, 'phase', 1)
                 fase_textos = {
                     1: "Dandelion",
@@ -3161,13 +3159,13 @@ class Game:
                     5: "Marlúxia"
                 }
                 
-                if phase in fase_textos and getattr(boss, f'_phase{phase}_triggered', False):
-                    # Mostra a fase apenas quando ela é ativada (usando um timer)
-                    if not hasattr(self, f'_phase{phase}_shown'):
-                        setattr(self, f'_phase{phase}_shown', 0.0)
-                    
-                    timer = getattr(self, f'_phase{phase}_shown', 0.0)
-                    if timer < 3.0:  # Mostra por 3 segundos
+                # Fase 1: mostra SEMPRE (não precisa de flag)
+                if phase == 1:
+                    # Timer para mostrar a fase 1 apenas nos primeiros segundos
+                    if not hasattr(self, '_phase1_shown'):
+                        setattr(self, '_phase1_shown', 0.0)
+                    timer = getattr(self, '_phase1_shown', 0.0)
+                    if timer < 3.0:
                         self.notifications.append({
                             "text": fase_textos[phase],
                             "x": self.screen_w // 2,
@@ -3179,7 +3177,23 @@ class Game:
                             "outline": True,
                             "shadow": True
                         })
-                    
+                # Fases 2-5: usam a flag triggered
+                elif phase in fase_textos and getattr(boss, f'_phase{phase}_triggered', False):
+                    if not hasattr(self, f'_phase{phase}_shown'):
+                        setattr(self, f'_phase{phase}_shown', 0.0)
+                    timer = getattr(self, f'_phase{phase}_shown', 0.0)
+                    if timer < 3.0:
+                        self.notifications.append({
+                            "text": fase_textos[phase],
+                            "x": self.screen_w // 2,
+                            "y": 100,
+                            "size": 28,
+                            "color": COR_OURO_CLARO,
+                            "bold": True,
+                            "center": True,
+                            "outline": True,
+                            "shadow": True
+                        })
     def _update_push_box(self, dt):
         """Física simples da caixa empurrável no andar de puzzle."""
         if self.current_floor != self.FLOOR_PUZZLE:
