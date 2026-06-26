@@ -444,15 +444,10 @@ class Game:
             self._start_story()
 
         self.floor_state.camera_walls = [
-        # Parede Norte (z negativo)
         {"pos": (0, ROOM_H/2, -ROOM_D/2), "normal": (0, 0, 1), "thickness": 0.3},
-        # Parede Sul
         {"pos": (0, ROOM_H/2, ROOM_D/2), "normal": (0, 0, -1), "thickness": 0.3},
-        # Parede Leste (x positivo)
         {"pos": (ROOM_W/2, ROOM_H/2, 0), "normal": (-1, 0, 0), "thickness": 0.3},
-        # Parede Oeste
         {"pos": (-ROOM_W/2, ROOM_H/2, 0), "normal": (1, 0, 0), "thickness": 0.3},
-        # Teto (plano horizontal em y = ROOM_H)
         {"pos": (0, ROOM_H, 0), "normal": (0, -1, 0), "thickness": 0.3},
     ]
 
@@ -463,7 +458,6 @@ class Game:
         self._build_room(floor_color=(0.12,0.10,0.18), wall_color=(0.18,0.14,0.26))
         self._place_player(pos=(0,2,14))
 
-        # Porta no fundo do corredor (Norte, Z=-13)
         dv, di = make_cube(1.0)
         dm = self._helper.make_box_mesh("door",3.0,4.0,0.3, color=(0.35,0.22,0.10), ka=0.2,kd=0.7,ks=0.3,shin=24)
 
@@ -474,7 +468,6 @@ class Game:
         self.floor_state.door_node = door_node
 
 
-        # Barreira mágica (inicialmente invisível até abrir a porta)
         bv, bi = make_cube(1.0)
         bm = self._helper.make_box_mesh("barrier",ROOM_W-2,ROOM_H-1,0.2, color=(0.2,0.1,0.8))
         barrier_text = Texture(os.path.join(_HERE, "assets", "images", "plasma.jpg"))
@@ -485,27 +478,22 @@ class Game:
         self.floor_state.barrier_active = False
 
 
-        # Escada no fundo (atrás da barreira)
         self._helper._build_stairs(self.scene, self.floor_state)
         self.floor_state.stair_locked = True
 
 
-        # Decoração: obeliscos encostados nas paredes laterais (x=±8.5, fora da área de passagem)
         for sx in (-8.5, 8.5):
             self._helper._add_tower_deco(self.scene, self.floor_state, "obelisk",
                             position=(sx, 0.0, 0.0), scale=(1.5, 1.5, 1.5),
                             collision_radius=1.2)
-        # Plataforma decorativa encostada na parede sul (atrás do spawn do player)
         self._helper._add_tower_deco(self.scene, self.floor_state, "platform",
                         position=(0.0, 0.0, 13.0), scale=(1.2, 1.2, 1.2),
                         collision_radius=1.5)
 
-        # Timer acumulado para animação da luz na sala de entrada
         self._entry_light_t = 0.0
 
 
     def _build_floor_puzzle(self):
-        # Só reinicia a música se não estiver tocando puzzle.mp3
         if not pygame.mixer.music.get_busy() or getattr(self, '_current_music', '') != 'puzzle':
             pygame.mixer.music.stop()
             pygame.mixer.music.load(os.path.join(_HERE, "assets", "music", "puzzle.mp3"))
@@ -638,7 +626,7 @@ class Game:
         portal_mesh = self._helper.make_box_mesh("parkour_portal", 2.5, 3.0, 0.3,
                                     color=(0.2, 0.3, 0.6))
         portal_node = SceneNode("parkour_portal", mesh=portal_mesh,
-                                position=(0, 1.5, 14.5), texture=door_tex)
+                                position=(0, 1.5, 14.5))
         self.scene.add(portal_node)
         self.floor_state.parkour_portal_node = portal_node
         # Adiciona uma hitbox física para o portal de entrada da sub-sala
@@ -765,7 +753,7 @@ class Game:
             door_tex = None
         return_portal = self._helper.make_box_mesh("pk_return", 2.5, 3.0, 0.3, color=(0.6, 0.3, 0.2))
         # Recua o portal de retorno para não ficar no centro da plataforma inicial
-        self.scene.add(SceneNode("pk_return", mesh=return_portal, position=(0, 1.5, 14.0), texture=door_tex))
+        self.scene.add(SceneNode("pk_return", mesh=return_portal, position=(0, 1.5, 14.0)))
         self.floor_state.parkour_return_pos = (0, 0.4, 14.5)
         # Adiciona uma hitbox física para o portal (colisão)
         try:
@@ -1541,7 +1529,6 @@ class Game:
                         e._dying       = True
                         e._death_timer = 3.0
                     else:
-                        # Inicia animação de morte (se houver) e sempre usa timer
                         self.sounds.heartless_death.play()
                         anim_e = getattr(e, '_anim', None)
 
