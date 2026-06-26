@@ -3768,7 +3768,7 @@ class Game:
             boss._phase4_triggered = True
             boss._atk_speed_mult = 2.5
             self.sounds.marluxia_fase4.play()
-            #self.hud.add_popup("FÚRIA!", 2.5, (255, 80, 0))
+            self.hud.add_popup("Tudo retorna ao esquecimento", 2.5, (255, 80, 0))
 
         # ── Fase 5: Enrage ──
         if not getattr(boss, '_enrage_triggered', False) and boss.stats.hp <= 1 and not boss.dead:
@@ -3781,7 +3781,7 @@ class Game:
             if hasattr(boss, 'invincible_timer'):
                 boss.invincible_timer = 10.0
             self.sounds.marluxia_fase5.play()
-            self.hud.add_popup("ENRAGE!", 3.0, (255, 0, 80))
+            self.hud.add_popup("Afunde na escuridão!", 3.0, (255, 0, 80))
 
         if getattr(boss, '_enrage_timer', 0.0) > 0.0:
             boss._enrage_timer -= dt
@@ -3798,6 +3798,8 @@ class Game:
         elif getattr(boss, '_enrage_cleanup_done', False):
             # Garante que a invencibilidade nunca volta após o enrage terminar
             boss.invincible_active = False
+            self.hud.add_popup("É fácil desistir, mas isso não combina com você!", 3.0, (255, 0, 80))
+
 
         if getattr(boss, '_enrage_triggered', False) and getattr(boss, '_enrage_timer', 1.0) <= 0.0 \
                 and not getattr(boss, '_enrage_cleanup_done', False):
@@ -3826,7 +3828,7 @@ class Game:
                     except Exception: pass
             boss.blackholes = []
             boss._enrage_bh_spawn_cd = 9999.0  # impede spawn imediato na fase 4
-            self.hud.add_popup("FÚRIA ENCERRADA!", 2.5, (255, 160, 0))
+            self.hud.add_popup("Lembre-se sempre, Natsuki Subaru", 2.5, (255, 160, 0))
 
         # ── Buracos negros ──
         _bh_phase = getattr(boss, 'phase', 1)
