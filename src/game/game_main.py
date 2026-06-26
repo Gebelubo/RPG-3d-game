@@ -3159,7 +3159,7 @@ class Game:
                     2: "Nobody",
                     3: "Memórias",
                     4: "Oblivion",
-                    5: "Marlúxia"
+                    5: "Marluxia"
                 }
                 
                 # Fase 1: mostra SEMPRE (não precisa de flag)
@@ -3813,6 +3813,7 @@ class Game:
             boss.phase = 4
             if hasattr(boss, 'invincible_timer'):
                 boss.invincible_timer = 0.0
+            self.hud.add_popup("Lembre-se sempre, Natsuki Subaru", 2.5, (255, 160, 0))
             boss._cp_1_done = True
             boss._cp_1_freeze = False
             boss.aggro = True
@@ -3830,7 +3831,6 @@ class Game:
                     except Exception: pass
             boss.blackholes = []
             boss._enrage_bh_spawn_cd = 9999.0  # impede spawn imediato na fase 4
-            self.hud.add_popup("Lembre-se sempre, Natsuki Subaru", 2.5, (255, 160, 0))
 
         # ── Buracos negros ──
         _bh_phase = getattr(boss, 'phase', 1)
