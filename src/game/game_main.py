@@ -626,7 +626,7 @@ class Game:
         portal_mesh = self._helper.make_box_mesh("parkour_portal", 2.5, 3.0, 0.3,
                                     color=(0.2, 0.3, 0.6))
         portal_node = SceneNode("parkour_portal", mesh=portal_mesh,
-                                position=(0, 1.5, 14.5))
+                                position=(0, 1.5, 14.5), texture=door_tex)
         self.scene.add(portal_node)
         self.floor_state.parkour_portal_node = portal_node
         # Adiciona uma hitbox física para o portal de entrada da sub-sala
@@ -753,7 +753,7 @@ class Game:
             door_tex = None
         return_portal = self._helper.make_box_mesh("pk_return", 2.5, 3.0, 0.3, color=(0.6, 0.3, 0.2))
         # Recua o portal de retorno para não ficar no centro da plataforma inicial
-        self.scene.add(SceneNode("pk_return", mesh=return_portal, position=(0, 1.5, 14.0)))
+        self.scene.add(SceneNode("pk_return", mesh=return_portal, position=(0, 1.5, 14.0), texture=door_tex))
         self.floor_state.parkour_return_pos = (0, 0.4, 14.5)
         # Adiciona uma hitbox física para o portal (colisão)
         try:
