@@ -503,6 +503,9 @@ class Game:
                         position=(0.0, 0.0, 13.0), scale=(1.2, 1.2, 1.2),
                         collision_radius=1.5)
 
+        # Timer acumulado para animação da luz na sala de entrada
+        self._entry_light_t = 0.0
+
         #self.hud.add_popup("Avance pelo corredor...", 3.0, (200,200,255))
         #self.hud.add_popup("[E/Enter] perto da porta para abrir", 5.0, (180,200,255))
 
@@ -2410,6 +2413,25 @@ class Game:
                     self.emilia_cutscene_phase = "idle_pending"
         # Timers da cutscene da Emilia (waking/idle após morte do boss)
         self._update_emilia_cutscene_timers(dt)
+
+        # ── Luz orbital na sala de entrada ───────────────────────────────────
+        if self.current_floor == self.FLOOR_ENTRY and hasattr(self, '_entry_light_t'):
+            self._entry_light_t += dt
+            t = self._entry_light_t
+            # Orbita em círculo no plano XZ, altura oscila levemente
+            radius = 5.0
+            lx = math.cos(t * 0.6) * radius
+            lz = math.sin(t * 0.6) * radius
+            ly = (ROOM_H - 1.5) + math.sin(t * 1.2) * 0.8
+            self.scene.light.pos = [lx, ly, lz]
+            # Cor pulsa suavemente entre lilás e azul-violeta
+            r = 0.6 + 0.2 * math.sin(t * 0.5)
+            g = 0.4 + 0.2 * math.sin(t * 0.7 + 1.0)
+            b = 1.0
+            self.scene.light.color = np.array([r, g, b], dtype=np.float32)
+            # Atualiza posição visual da esfera que representa a luz
+            if hasattr(self, 'light_node') and self.light_node is not None:
+                self.light_node.position = [lx, ly, lz]
 
     def _update_fade(self, dt):
         half = self._fade_duration
@@ -4544,7 +4566,7 @@ class Game:
                 "Lord of the Castle",
                 "Yoko Shimomura",
                 "",
-                "── Obrigado por jogar ──",
+                "Obrigado por jogar",
                 "",
                 "\"Mesmo que vocês esqueçam,",
                 "eu não vou me esquecer de nenhum de vocês.\"",
