@@ -165,6 +165,7 @@ class Game:
         self._post_fade_mode     = "explore"
         self._fade_build_pending = False
         self.notifications = []
+        self.max_phase = 0
         self._push_title_menu()
 
     # ── Cena base ─────────────────────────────────────────────────────────────
@@ -3151,6 +3152,8 @@ class Game:
             boss = getattr(self.floor_state, 'boss', None)
             if boss is not None and not boss.dead:
                 phase = getattr(boss, 'phase', 1)
+                self.max_phase = max(self.max_phase, phase)
+                phase = self.max_phase
                 fase_textos = {
                     1: "Dandelion",
                     2: "Nobody",
@@ -3798,11 +3801,10 @@ class Game:
         elif getattr(boss, '_enrage_cleanup_done', False):
             # Garante que a invencibilidade nunca volta após o enrage terminar
             boss.invincible_active = False
-            self.hud.add_popup("É fácil desistir, mas isso não combina com você!", 3.0, (255, 0, 80))
-
 
         if getattr(boss, '_enrage_triggered', False) and getattr(boss, '_enrage_timer', 1.0) <= 0.0 \
                 and not getattr(boss, '_enrage_cleanup_done', False):
+            self.hud.add_popup("É fácil desistir, mas isso não combina com você!", 3.0, (255, 0, 80))
             boss._enrage_cleanup_done = True
             boss._enrage_timer = 0.0
             boss.invincible_active = False
@@ -4411,13 +4413,12 @@ class Game:
             
         if self.game_mode == "credits":
             h.draw_rect(0, 0, sw, sh, (0.0, 0.0, 0.0))
-            credits = [
-                "Re:Oblivion of Memories",
-                "Re:Zero – Uma nova jornada",
+            credits = ["Re:Oblivion of Memories",
+                "Fragmentos de um Destino Perdido",
                 "",
                 "── Desenvolvimento ──",
                 "",
-                "Vesuvio  ·  Gabriel Luiz",
+                "Alexsandro Barreto  ·  Gabriel Luiz",
                 "",
                 "── História ──",
                 "",
@@ -4441,20 +4442,22 @@ class Game:
                 "",
                 "Modelos 3D de personagens",
                 "Mixamo – Adobe Inc.",
+                "Jogos da franquia Re:zero",
+                "Jogos da franquia Kingdom Hearts",
                 "",
-                "Inimigos: Heartless",
+                "Inimigos: Heartless, AerialKnocker",
                 "Kingdom Hearts © Square Enix / Disney",
                 "",
                 "── Trilha Sonora ──",
                 "",
-                "Hikari (Simple and Clean) Orchestral Version",
-                "Yoda",
+                "Simple and Clean Orchestral Version",
+                "Hikaru Utada",
                 "",
                 "Castle Oblivion",
-                "Kingdom Hearts Re:Chain of Memories OST",
+                "Yoko Shimomura",
                 "",
-                "Styx Helix (Emotional Piano Cover)",
-                "PianoPrince",
+                "Styx Helix",
+                "MYTH&ROID",
                 "",
                 "Sinister Shadows",
                 "Yoko Shimomura",
@@ -4909,7 +4912,7 @@ class Game:
         hud.draw_gem(sw / 2 + deco_w / 2, deco_y + 1, 4, (0.78, 0.64, 0.28), sides=4)
 
         # ── Subtítulo ────────────────────────────────────────────────────────────
-        hud.draw_text("Re:Zero – uma nova jornada", sw // 2, deco_y + 22, 18,
+        hud.draw_text("Fragmentos de um destino perdido", sw // 2, deco_y + 22, 18,
                     (210, 195, 230), center=True, shadow=True)
 
     def on_resize(self, w, h):

@@ -1,5 +1,5 @@
 SCREEN_W, SCREEN_H = 1280, 720
-TITLE      = "Torre de Plêiades – Re:Zero RPG"
+TITLE      = "Re:Oblivion of Memories"
 
 
 ROOM_W = 20.0
