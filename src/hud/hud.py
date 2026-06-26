@@ -486,7 +486,7 @@ class HUD:
         self.draw_banner("VOCÊ MORREU", sw / 2, sh / 2 - 46, w=380, h=56,
                          base_color=CRIMSON_F, edge_color=IRON_DARK_F,
                          text_color=(255, 210, 210), text_size=30, notch=22)
-        self.draw_text("Return by Death...", sw // 2, sh // 2 + 30,
+        self.draw_text("Retorno da morte...", sw // 2, sh // 2 + 30,
                        18, (205, 140, 140), center=True, shadow=True)
 
     def draw_pause_overlay(self):

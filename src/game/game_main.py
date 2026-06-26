@@ -473,7 +473,7 @@ class Game:
         bv, bi = make_cube(1.0)
         bm = self._helper.make_box_mesh("barrier",ROOM_W-2,ROOM_H-1,0.2, color=(0.2,0.1,0.8))
         barrier_text = Texture(os.path.join(_HERE, "assets", "images", "plasma.jpg"))
-        barrier_node = SceneNode("barrier", mesh=bm, position=(0,ROOM_H/2-0.5,-9.0), texture=barrier_text, transparent=True, scale=(1.2, 1.2, 1.2))
+        barrier_node = SceneNode("barrier", mesh=bm, position=(0,ROOM_H/2-0.5,-10.5), texture=barrier_text, transparent=True, scale=(1.2, 1.2, 1.2))
         barrier_node.visible = False
         self.scene.add(barrier_node)
         self.floor_state.barrier_node   = barrier_node
@@ -651,7 +651,7 @@ class Game:
         self._helper._build_stairs(self.scene, self.floor_state)
         bm = self._helper.make_box_mesh("barrier",ROOM_W-2,ROOM_H-1,0.2, color=(0.2,0.1,0.8))
         barrier_text = Texture(os.path.join(_HERE, "assets", "images", "plasma.jpg"))
-        barrier_node = SceneNode("barrier", mesh=bm, position=(0,ROOM_H/2-0.5,-9.0), texture=barrier_text, transparent=True, scale=(1.2, 1.2, 1.2))
+        barrier_node = SceneNode("barrier", mesh=bm, position=(0,ROOM_H/2-0.5,-10.5), texture=barrier_text, transparent=True, scale=(1.2, 1.2, 1.2))
         self.scene.add(barrier_node)
         self.floor_state.barrier_node   = barrier_node
 
@@ -839,7 +839,7 @@ class Game:
         self._helper._build_stairs(self.scene, self.floor_state)
         bm = self._helper.make_box_mesh("barrier",ROOM_W-2,ROOM_H-1,0.2, color=(0.2,0.1,0.8))
         barrier_text = Texture(os.path.join(_HERE, "assets", "images", "plasma.jpg"))
-        barrier_node = SceneNode("barrier", mesh=bm, position=(0,ROOM_H/2-0.5,-9.0), texture=barrier_text, transparent=True, scale=(1.2, 1.2, 1.2))
+        barrier_node = SceneNode("barrier", mesh=bm, position=(0,ROOM_H/2-0.5,-10.5), texture=barrier_text, transparent=True, scale=(1.2, 1.2, 1.2))
         self.scene.add(barrier_node)
         self.floor_state.barrier_node   = barrier_node
 
@@ -869,7 +869,7 @@ class Game:
         self._helper._build_stairs(self.scene, self.floor_state)
         bm = self._helper.make_box_mesh("barrier",ROOM_W-2,ROOM_H-1,0.2, color=(0.2,0.1,0.8))
         barrier_text = Texture(os.path.join(_HERE, "assets", "images", "plasma.jpg"))
-        barrier_node = SceneNode("barrier", mesh=bm, position=(0,ROOM_H/2-0.5,-9.0), texture=barrier_text, transparent=True, scale=(1.2, 1.2, 1.2))
+        barrier_node = SceneNode("barrier", mesh=bm, position=(0,ROOM_H/2-0.5,-10.5), texture=barrier_text, transparent=True, scale=(1.2, 1.2, 1.2))
         self.scene.add(barrier_node)
         self.floor_state.barrier_node   = barrier_node
         self.floor_state.rhythm_done  = False
@@ -921,7 +921,7 @@ class Game:
         # Porta/portal visual + referência de barrier_node e hitbox (posicionada como nos outros andares)
         bm = self._helper.make_box_mesh("barrier",ROOM_W-2,ROOM_H-1,0.2, color=(0.2,0.1,0.8))
         barrier_text = Texture(os.path.join(_HERE, "assets", "images", "plasma.jpg"))
-        barrier_node = SceneNode("barrier", mesh=bm, position=(0,ROOM_H/2-0.5,-9.0), texture=barrier_text, transparent=True, scale=(1.2, 1.2, 1.2))
+        barrier_node = SceneNode("barrier", mesh=bm, position=(0,ROOM_H/2-0.5,-10.5), texture=barrier_text, transparent=True, scale=(1.2, 1.2, 1.2))
         self.scene.add(barrier_node)
         self.floor_state.barrier_node   = barrier_node
         # adiciona hitbox físico para bloquear até a barreira cair (mesma posição dos outros andares)
@@ -1357,7 +1357,7 @@ class Game:
         floor = saved_floor if saved_floor is not None else self.current_floor
         self._build_floor(floor)
         self.game_mode = "explore"; self.input.capture_mouse(True)
-        self.hud.add_popup("Return by Death...", 3.0, (180,80,80))
+        self.hud.add_popup("Retorno da morte...", 3.0, (180,80,80))
 
     # ── Floor progression ─────────────────────────────────────────────────────
 
